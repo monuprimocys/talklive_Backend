@@ -1,0 +1,6 @@
+uploads/
+node_modules/
+.env
+validatedToken.txt
+.marscode
+old_encrypted.zip

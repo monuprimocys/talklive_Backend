@@ -1,0 +1,34 @@
+{
+  "name": "reel-boost",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon index.js"
+  },
+  "author": "Omkar Primocys",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.817.0",
+    "@aws-sdk/s3-request-presigner": "^3.817.0",
+    "axios": "^1.9.0",
+    "bcrypt": "^6.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "ffmpeg-static": "^5.3.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "getmac": "^6.6.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.0",
+    "mysql2": "^3.11.5",
+    "node-cron": "^4.2.0",
+    "nodemailer": "^7.0.12",
+    "pg": "^8.13.2",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.37.5",
+    "socket.io": "^4.8.0",
+    "stripe": "^18.5.0",
+    "twilio": "^5.4.4"
+  }
+}
