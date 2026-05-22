@@ -88,7 +88,7 @@ async function findUser(req, res) {
                 true,
             );
         }
-        const attributes = ['updatedAt', 'profile_pic', 'user_id', 'full_name', 'user_name', 'email', 'country_code', 'country', 'gender', 'bio', 'profile_verification_status', 'login_verification_status']
+        const attributes = ['updatedAt', 'message_price', 'call_price', 'video_call_price', 'profile_pic', 'user_id', 'full_name', 'user_name', 'email', 'country_code', 'country', 'gender', 'bio', 'profile_verification_status', 'login_verification_status']
         const isUser = await getUsers(filteredData, pagination, attributes)
 
         if (isUser?.Records?.length <= 0) {

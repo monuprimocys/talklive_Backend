@@ -86,7 +86,7 @@ console.log(`[leave_call] ► user_id=${user_id} call_id=${data.call_id} peer_id
       call = await call_service.getCall({ call_id: data.call_id }, [
         {
           model: User,
-          attributes: ["user_id", "profile_pic", "banner_image", "full_name", "user_name"],
+          attributes: ["user_id", "profile_pic",  "full_name", "user_name"],
           as: "caller",
         },
       ]);
@@ -156,7 +156,7 @@ console.log(`[leave_call] ► user_id=${user_id} call_id=${data.call_id} peer_id
       call = await call_service.getCall({ call_id: data.call_id }, [
         {
           model: User,
-          attributes: ["user_id", "profile_pic", "banner_image", "full_name", "user_name"],
+          attributes: ["user_id", "profile_pic", "full_name", "user_name"],
           as: "caller",
         },
       ]);
@@ -177,7 +177,7 @@ console.log(`[leave_call] ► user_id=${user_id} call_id=${data.call_id} peer_id
       call = await call_service.getCall({ call_id: data.call_id }, [
         {
           model: User,
-          attributes: ["user_id", "profile_pic", "banner_image", "full_name", "user_name"],
+          attributes: ["user_id", "profile_pic",  "full_name", "user_name"],
           as: "caller",
         },
       ]);

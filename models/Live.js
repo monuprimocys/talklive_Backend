@@ -63,10 +63,10 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: true,
             },
             time: {
-                type: DataTypes.STRING,
-                allowNull: false,
-                defaultValue: "1:00", //minutes:seconds Default battle time 1 minutes
-            }
+  type: DataTypes.STRING,
+  allowNull: false,
+  defaultValue: "0:30", // 30 seconds (minutes:seconds)
+}
 
         }
     );

@@ -282,32 +282,32 @@ async function createFeedPost(req, res) {
       } 
       /* ---------- LOCAL MODE ---------- */
       else {
-        const files = req.files?.['files'] || [];
-        const file = files[0];
-        
-        if (!file) {
-          return generalResponse(res, {}, "File is missing", false, true, 400);
-        }
+       
+const files = req.files?.['files'] || [];
 
-        // Determine media type from file mimetype
-        const mimeType = file.mimetype;
-        if (mimeType.startsWith('video')) {
-          mediaType = 'video';
-        } else if (mimeType.startsWith('image')) {
-          mediaType = 'image';
-        }
+const thumbnailFile = files[0];
+const videoFile = files[1];
 
-        mediaUrl = file.path;
+if (!videoFile) {
+  return generalResponse(res, {}, "File is missing", false, true, 400);
+}
 
-        // Create media record
-        const mediaPayload = {
-          feed_id: feed.feed_id,
-          media_url: mediaUrl,
-          media_type: mediaType,
-          order: 0
-        };
+let mediaType = videoFile.mimetype.startsWith('video') ? 'video' : 'image';
 
-        await addFeedMedia(mediaPayload);
+const mediaUrl = videoFile.path;
+
+// ✅ IMPORTANT FIX HERE
+const thumbnailUrl = thumbnailFile ? thumbnailFile.path : null;
+
+const mediaPayload = {
+  feed_id: feed.feed_id,
+  media_type: mediaType,
+  thumbnail_url: thumbnailUrl,   // ✅ STRING NOT OBJECT
+  media_url: mediaUrl,
+  order: 0
+};
+
+await addFeedMedia(mediaPayload);
       }
     }
 
@@ -345,18 +345,32 @@ async function getFeedPosts(req, res) {
       location,
       hashtag,
       user_name,
-      sort_by = 'createdAt',
-      sort_order = 'DESC',
+      sort_by = "createdAt",
+      sort_order = "DESC",
       exclude_user_ids = []
     } = req.body;
 
-    // Build filter
+    // ✅ Safe user_id handling
+    const user_id = Number(req.authData?.user_id);
+
+    if (!user_id || Number.isNaN(user_id)) {
+      return generalResponse(
+        res,
+        {},
+        "Invalid user token",
+        false,
+        true,
+        401
+      );
+    }
+
+    // ✅ Build filter
     const filterPayload = {
       status: true,
       deleted_by_user: false
     };
 
-    if (feed_type && feed_type !== 'all') {
+    if (feed_type && feed_type !== "all") {
       filterPayload.feed_type = feed_type;
     }
 
@@ -372,12 +386,13 @@ async function getFeedPosts(req, res) {
       filterPayload.user_name = user_name;
     }
 
-    // Get feed posts
+    // ✅ IMPORTANT FIX: pass user_id here
     const feeds = await getFeed(
       filterPayload,
-      { page, pageSize },
-      exclude_user_ids,
-      [[sort_by, sort_order]]
+      { page: Number(page), pageSize: Number(pageSize) },
+      Array.isArray(exclude_user_ids) ? exclude_user_ids : [],
+      [[sort_by, sort_order]],
+      user_id // 🔥 FIXED
     );
 
     return generalResponse(

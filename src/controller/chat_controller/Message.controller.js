@@ -6,8 +6,82 @@ const message_seen_service = require("../../service/repository/Message_seen.serv
 const {
   getUser
 } = require("../../service/repository/user.service");
-const { User, Message, Social } = require("../../../models");
+const { User, Message, Social, Message_seen } = require("../../../models");
 const { Op, Sequelize } = require("sequelize"); // Ensure you're importing Op
+
+async function markChatMessagesSeen({ chat_id, user_id, message_id, emitEvent }) {
+  const where = {
+    chat_id,
+    user_id,
+    message_seen_status: { [Op.ne]: "seen" },
+  };
+
+  if (message_id) {
+    where.message_id = message_id;
+  }
+
+  await message_seen_service.updateMessageSeen(
+    where,
+    { message_seen_status: "seen" }
+  );
+
+  const participants = await participant_service.getParticipantWithoutPagenation({
+    chat_id,
+  });
+
+  const participantCount = participants.Records.length;
+  if (!participantCount) {
+    return [];
+  }
+
+  const seenWhere = {
+    chat_id,
+    message_seen_status: "seen",
+  };
+
+  if (message_id) {
+    seenWhere.message_id = message_id;
+  }
+
+  const fullySeenRows = await Message_seen.findAll({
+    attributes: ["message_id"],
+    where: seenWhere,
+    group: ["message_id"],
+    having: Sequelize.where(
+      Sequelize.fn("COUNT", Sequelize.literal('DISTINCT "user_id"')),
+      { [Op.gte]: participantCount }
+    ),
+    raw: true,
+  });
+
+  const fullySeenMessageIds = fullySeenRows.map((row) => row.message_id);
+  if (!fullySeenMessageIds.length) {
+    return [];
+  }
+
+  const updateMessage = await message_service.updateMessage(
+    {
+      chat_id,
+      message_id: { [Op.in]: fullySeenMessageIds },
+      message_seen_status: { [Op.ne]: "seen" },
+    },
+    { message_seen_status: "seen" }
+  );
+
+  const updatedMessages = updateMessage?.[1] || [];
+
+  for (const message of updatedMessages) {
+    const messageData = typeof message.toJSON === "function" ? message.toJSON() : message;
+    const sender = await getUser({ user_id: messageData.sender_id });
+
+    if (sender?.socket_id) {
+      emitEvent(sender.socket_id, "real_time_message_seen", messageData);
+      emitEvent(sender.socket_id, "message_seen_status", messageData);
+    }
+  }
+
+  return updatedMessages;
+}
 
 async function typing(socket, data, emitEvent) {
   const isUser = await getUser({ user_id: socket.authData.user_id });
@@ -271,8 +345,9 @@ async function chat_list(socket, data, emitEvent) {
 
 async function message_list(socket, data, emitEvent) {
   const isUser = await getUser({ user_id: socket.authData.user_id });
+  const chatId = Number(data.chat_id);
 
-  if (!data.chat_id) {
+  if (!chatId) {
     // actual_socket_id =
     return emitEvent(socket.id, "message_list", "Chat id is required");
   }
@@ -373,20 +448,21 @@ async function message_list(socket, data, emitEvent) {
 
   if (participants.Records.length > 0) {
     let chat_ids = participants.Records.map(
-      (chats) => chats.chat_id
+      (chats) => Number(chats.chat_id)
     );
 
-    if (chat_ids.includes(data.chat_id)) {
+    if (chat_ids.includes(chatId)) {
       // Create an array of promises
 
-      let aa = await participant_service.getParticipantWithoutPagenation(
-        { chat_id: data.chat_id },
-        includeOptions
-      );
+      await markChatMessagesSeen({
+        chat_id: chatId,
+        user_id: isUser.user_id,
+        emitEvent,
+      });
 
       let chats = await message_service.getMessages(
         {
-          chat_id: data.chat_id,
+          chat_id: chatId,
           [Op.and]: [
             Sequelize.literal(`NOT ("Message"."deleted_for" @> ARRAY['${isUser.user_id}']::decimal[])`)
           ]
@@ -401,46 +477,6 @@ async function message_list(socket, data, emitEvent) {
 
 
       if (chats.Records?.length > 0) {
-
-        for await (const element of chats.Records) {
-          try {
-            if (![175, 177, 183, 184, 179, 185, 180, 182, 186, 187].includes(data.chat_id)) {
-
-              let update_status = await message_seen_service.updateMessageSeen(
-                {
-                  message_id: element.message_id,
-                  user_id: isUser.toJSON().user_id
-                },
-                { message_seen_status: "seen" }
-              );
-            }
-
-            const seen_user_count = await message_seen_service.getMessageSeenCount(
-              {
-                andConditions: {
-                  chat_id: element.chat_id,
-                  message_id: element.message_id,
-                  message_seen_status: 'seen'
-                }
-
-              }
-            )
-            if (aa.Records.length == seen_user_count.count && element.message_seen_status != "seen") {
-              const message_status_content = await message_service.updateMessage({ message_id: element.message_id }, { message_seen_status: "seen" })
-              const sender = await getUser({ user_id: element.sender_id })
-              emitEvent(sender.socket_id, "message_seen_status", message_status_content[1][0]);
-
-              // emmit_data_to_sender.push(element)
-            }
-            // const total_users_of_chats 
-
-          } catch (error) {
-            console.error('Error updating message seen:', error);
-          }
-        }
-
-
-
         emmitdata.push(chats);
         // Process users and append socket IDs to listner_socket_id
         // aa.Records.map((user) => {
@@ -543,50 +579,52 @@ async function initial_onlineList(socket, emitEvent) {
 
 async function real_time_message_seen(socket, data, emitEvent) {
   const isUser = await getUser({ user_id: socket.authData.user_id });
-  const isMessage = await message_service.getMessages(
-    {
-      message_id: data.message_id,
-      chat_id: data.chat_id
-    }
-  );
-  if (![175, 177, 183, 184, 179, 185, 180, 182, 186, 187].includes(data.chat_id)) {
-    return
-  }
-  if (isMessage) {
-    const update_message_seen = await message_seen_service.updateMessageSeen({
-      message_id: data.message_id,
-      user_id: isUser.toJSON().user_id
-    }, {
-      message_seen_status: data.status
-    })
-    const seen_user_count = await message_seen_service.getMessageSeenCount(
-      {
-        andConditions: {
-          chat_id: data.chat_id,
-          message_id: data.message_id,
-          message_seen_status: 'seen'
-        }
 
-      }
-    )
-    let aa = await participant_service.getParticipantWithoutPagenation(
-      { chat_id: data.chat_id },
-    );
-    if (seen_user_count.count == aa.Records.length && update_message_seen[0] > 0) {
-      const update_message = await message_service.updateMessage({ message_id: Number(data.message_id) }, { message_seen_status: "seen" })
-
-      if (update_message[0] > 0) {
-
-        sender = await getUser({ user_id: update_message[1][0].toJSON().sender_id })
-
-        emitEvent(sender.socket_id, "real_time_message_seen", update_message[1][0].toJSON())
-      }
-    }
-  }
   if (!isUser) {
-    return next(new Error("User not found."));
+    return emitEvent(socket.id, "real_time_message_seen", {
+      success: false,
+      message: "User not found",
+    });
   }
 
+  const chatId = Number(data.chat_id);
+  const messageId = data.message_id ? Number(data.message_id) : null;
+
+  if (!chatId) {
+    return emitEvent(socket.id, "real_time_message_seen", {
+      success: false,
+      message: "chat_id is required",
+    });
+  }
+
+  const isParticipant = await participant_service.isParticipant(isUser.user_id, chatId);
+  if (!isParticipant) {
+    return emitEvent(socket.id, "real_time_message_seen", {
+      success: false,
+      message: "Invalid Chat",
+    });
+  }
+
+  if (messageId) {
+    const isMessage = await message_service.getMessage({
+      message_id: messageId,
+      chat_id: chatId,
+    });
+
+    if (!isMessage) {
+      return emitEvent(socket.id, "real_time_message_seen", {
+        success: false,
+        message: "Message not found",
+      });
+    }
+  }
+
+  await markChatMessagesSeen({
+    chat_id: chatId,
+    user_id: isUser.user_id,
+    message_id: messageId,
+    emitEvent,
+  });
 }
 
 async function get_chat_id(socket, data) {

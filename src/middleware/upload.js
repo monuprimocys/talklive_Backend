@@ -14,7 +14,7 @@ const storage = multer.diskStorage({
         break;
       case "reel":
         let filemimeType = mime.lookup(file.originalname);
-        uploadPath = filemimeType.includes("image")
+        uploadPath = (filemimeType && filemimeType.includes("image"))
           ? "./uploads/reels/thumbnail"
           : "./uploads/reels/video";
         break;

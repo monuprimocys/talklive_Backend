@@ -290,7 +290,7 @@ async function sendMessage(req, res) {
             balanceValidation.message,
             false,
             true,
-            402
+            200
           );
         }
       }

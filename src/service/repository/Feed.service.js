@@ -24,7 +24,7 @@ async function createFeed(feedPayload) {
  * @param {Array} order - Sort order
  * @returns {Promise<Object>} Feed posts with pagination info
  */
-async function getFeed(filterPayload = {}, pagination = { page: 1, pageSize: 10 }, excludedUserIds = [], order = [['createdAt', 'DESC']]) {
+async function getFeed(filterPayload = {}, pagination = { page: 1, pageSize: 10 }, excludedUserIds = [], order = [['createdAt', 'DESC']], user_id) {
   try {
     const { page = 1, pageSize = 10 } = pagination;
     const offset = (Number(page) - 1) * Number(pageSize);
@@ -90,6 +90,30 @@ async function getFeed(filterPayload = {}, pagination = { page: 1, pageSize: 10 
 
     const { count, rows } = await Feed.findAndCountAll({
       where: whereCondition,
+       attributes: {
+    include: [
+      [
+        Sequelize.literal(`
+          EXISTS (
+            SELECT 1 FROM "FeedLikes" AS fl
+            WHERE fl.feed_id = "Feed"."feed_id"
+            AND fl.user_id = ${Number(user_id)}
+          )
+        `),
+        "is_liked"
+      ],
+      [
+        Sequelize.literal(`
+          EXISTS (
+            SELECT 1 FROM "FeedSaves" AS fs
+            WHERE fs.feed_id = "Feed"."feed_id"
+            AND fs.user_id = ${Number(user_id)}
+          )
+        `),
+        "is_saved"
+      ]
+    ]
+  },
       include: includeOptions,
       order: order,
       offset: offset,
