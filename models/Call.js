@@ -65,6 +65,10 @@ module.exports = (sequelize, DataTypes) => {
             foreignKey: "chat_id",
             onDelete: 'CASCADE'
         })
+        Call.hasMany(models.Message, {
+            foreignKey: "call_id",
+            onDelete: 'CASCADE',
+        })
         Call.belongsTo(models.User, {
             foreignKey: "user_id",
             onDelete: 'CASCADE',

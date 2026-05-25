@@ -26,13 +26,11 @@ module.exports = (sequelize, DataTypes) => {
     order_id: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
       comment: "NOWPayments order ID",
     },
     payment_id: {
       type: DataTypes.STRING,
       allowNull: true,
-      unique: true,
       comment: "NOWPayments payment ID",
     },
     coins: {
@@ -70,20 +68,22 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       comment: "Amount in the pay_currency",
     },
-    status: {
-      type: DataTypes.ENUM(
-        "PENDING",
-        "CONFIRMING",
-        "CONFIRMED",
-        "SENDING",
-        "FINISHED",
-        "FAILED",
-        "CANCELLED"
-      ),
-      allowNull: false,
-      defaultValue: "PENDING",
-      comment: "Payment status from NOWPayments",
-    },
+   status: {
+  type: DataTypes.STRING, // ✅ CHANGE THIS
+  allowNull: false,
+  defaultValue: "PENDING",
+  validate: {
+    isIn: [[
+      "PENDING",
+      "CONFIRMING",
+      "CONFIRMED",
+      "SENDING",
+      "FINISHED",
+      "FAILED",
+      "CANCELLED"
+    ]]
+  }
+},
     confirmation_count: {
       type: DataTypes.INTEGER,
       allowNull: false,

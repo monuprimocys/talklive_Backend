@@ -6,12 +6,14 @@ module.exports = (sequelize, DataTypes) => {
       primaryKey: true,
       autoIncrement: true,
     },
-    feed_type: {
-      type: DataTypes.ENUM('text', 'text_image', 'text_video', 'image_only', 'video_only'),
-      allowNull: false,
-      defaultValue: 'text',
-      comment: 'Post type: text only, text with image, text with video, image only, or video only',
-    },
+   feed_type: {
+  type: DataTypes.STRING,
+  allowNull: false,
+  defaultValue: 'text',
+  validate: {
+    isIn: [['text', 'text_image', 'text_video', 'image_only', 'video_only']]
+  }
+},
     content: {
       type: DataTypes.TEXT,
       allowNull: true,

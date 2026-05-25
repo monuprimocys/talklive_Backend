@@ -23,6 +23,7 @@ const callRoutes = require("./call.routes");
 const feedRoutes = require("./feed.routes")
 const paidCommunicationRoutes = require("./paid-communication.routes")
 const paymentRoutes = require("./payment.routes")
+const notificationSettingRoutes = require("./notificationSetting.routes")
 
 const router = Router();
 
@@ -63,6 +64,6 @@ router.get("/project_conf", get_Config)
 router.use("/call", callRoutes);
 router.use("/paid-communication", paidCommunicationRoutes);
 router.use("/payment", paymentRoutes);
-
+router.use("/notification-settings", notificationSettingRoutes);
 
 module.exports = router;

@@ -184,6 +184,10 @@ message_thumbnail: {
       defaultValue: 0,
       onDelete: "CASCADE",
     });
+    Message.belongsTo(models.Call, {
+  foreignKey: "call_id",
+  onDelete: "CASCADE",
+});
     Message.belongsTo(models.Social, {
       foreignKey: "social_id",
       allowNull: true,

@@ -160,7 +160,7 @@ app.get("*", (req, res) => {
 });
 // Sync database and start server
 db.sequelize.sync({
-    alter: false, // Use 'alter' to update existing tables without dropping them
+    alter: false
 }).then(async () => {
     const tokenFilePath = path.join(__dirname, "validatedToken.txt");
     if (fs.existsSync(tokenFilePath)) {

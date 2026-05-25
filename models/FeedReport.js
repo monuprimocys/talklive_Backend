@@ -19,9 +19,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     status: {
       type: DataTypes.ENUM('pending', 'reviewed', 'resolved', 'rejected'),
-      allowNull: false,
       defaultValue: 'pending',
-      comment: 'Status of the report',
     },
     admin_notes: {
       type: DataTypes.TEXT,

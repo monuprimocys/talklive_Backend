@@ -6,12 +6,11 @@ module.exports = (sequelize, DataTypes) => {
       primaryKey: true,
       autoIncrement: true,
     },
-    mention_type: {
-      type: DataTypes.ENUM('content', 'media_tag'),
-      allowNull: false,
-      defaultValue: 'content',
-      comment: 'Type of mention: in content (@user) or tagged in media',
-    },
+   mention_type: {
+  type: DataTypes.STRING,
+  allowNull: false,
+  defaultValue: 'content',
+}
   });
 
   FeedTaggedUser.associate = function (models) {

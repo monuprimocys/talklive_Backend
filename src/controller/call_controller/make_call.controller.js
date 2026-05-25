@@ -84,7 +84,24 @@ async function makeCall(req, res) {
       });
     }
 
-    // ✅ Create call message
+    // ✅ Participants (needed early for paid-call check)
+    const participants =
+      await participant_service.getParticipantWithoutPagenation(
+        { chat_id },
+        [
+          {
+            model: User,
+            attributes: ["user_id", "device_token", "socket_id", "full_name"],
+          },
+        ]
+      );
+
+    // ✅ Generate room ID
+    const room_id = generateRoomId();
+
+    // ─────────────────────────────────────────────────────────────
+    // STEP 1: Create the call message FIRST (no call_id yet)
+    // ─────────────────────────────────────────────────────────────
     const message = await message_service.createMessage({
       chat_id,
       message_content: "calling",
@@ -92,7 +109,107 @@ async function makeCall(req, res) {
       sender_id: user_id,
     });
 
-    // ✅ Fetch message with relations
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        error: "Failed to create call message",
+      });
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // STEP 2: Create the call WITH message_id
+    // ─────────────────────────────────────────────────────────────
+    const call = await call_service.makeCall({
+      call_type,
+      call_status: "ringing",
+      call_duration: 0,
+      end_time: new Date(),
+      users: [user_id],
+      message_id: message.message_id,   // ✅ now available
+      chat_id,
+      user_id,
+      room_id,
+      current_users: [user_id],
+    });
+
+    if (!call) {
+      return res.status(400).json({
+        success: false,
+        error: "Failed to make call",
+      });
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // STEP 3: Update message with call_id so it's stored properly
+    // ─────────────────────────────────────────────────────────────
+    await message_service.updateMessage(
+      { message_id: message.message_id },
+      { call_id: call.call_id }
+    );
+
+    // Keep local reference up to date
+    message.call_id = call.call_id;
+
+    // ─────────────────────────────────────────────────────────────
+    // STEP 4: Paid-call handling — lock coins & start tracking
+    // ─────────────────────────────────────────────────────────────
+    try {
+      const participantsSimple = participants?.Records || [];
+      const receivers = participantsSimple.filter((p) => p.user_id !== user_id);
+
+      if (receivers.length === 1) {
+        const recipient_id = receivers[0].user_id;
+        const txnType =
+          String(call_type).toLowerCase() === "video"
+            ? "VIDEO_CALL"
+            : "VOICE_CALL";
+
+        const preCall = await BalanceValidator.validatePreCallRequirements(
+          user_id,
+          recipient_id,
+          txnType
+        );
+
+        if (preCall.requiresPayment) {
+          const lockResult = await CoinsService.lockCoinsForCall(
+            user_id,
+            preCall.price
+          );
+
+          if (!lockResult.success) {
+            return res.status(402).json({
+              success: false,
+              error: lockResult.message || "Insufficient coins to start call",
+            });
+          }
+
+          const session_id = lockResult.session_id;
+
+          CallTrackingService.startCallTracking(
+            session_id,
+            user_id,
+            recipient_id,
+            preCall.price,
+            txnType
+          );
+
+          CallTrackingService.activePayments[room_id] = {
+            session_id,
+            locked_amount: lockResult.locked_amount || preCall.price,
+            from_user_id: user_id,
+            to_user_id: recipient_id,
+            price_per_minute: preCall.price,
+            transaction_type: txnType,
+          };
+        }
+      }
+    } catch (err) {
+      console.error("Paid call setup error:", err);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // STEP 5: Fetch enriched message for socket emission
+    // ─────────────────────────────────────────────────────────────
     const includeOptionsforChat = [
       { model: Message, as: "ParentMessage" },
       { model: Message, as: "Replies" },
@@ -110,7 +227,7 @@ async function makeCall(req, res) {
     ];
 
     let NewMessageAfterCreation = await message_service.getMessages(
-      { message_id: message.message_id },
+      { message_id: message.message_id },   // ✅ message is defined now
       includeOptionsforChat,
       { page: 1, pageSize: 1 },
       []
@@ -127,100 +244,9 @@ async function makeCall(req, res) {
     // ✅ Chat details
     const chat = await getChat({ chat_id });
 
-    // ✅ Participants
-    const participants =
-      await participant_service.getParticipantWithoutPagenation(
-        { chat_id },
-        [
-          {
-            model: User,
-            attributes: ["user_id", "device_token", "socket_id", "full_name"],
-          },
-        ]
-      );
-
-    // ✅ Create call
-    const room_id = generateRoomId();
-
-    const call = await call_service.makeCall({
-      call_type,
-      call_status: "ringing",
-      call_duration: 0,
-      end_time: new Date(),
-      users: [user_id],
-      message_id: message.message_id,
-      chat_id,
-      user_id,
-      room_id,
-      current_users: [user_id],
-    });
-
-    // ✅ Paid-call handling: lock initial minute and start tracking
-    try {
-      // Only handle paid flow for 1:1 calls
-      const participantsSimple = participants?.Records || [];
-      const receivers = participantsSimple.filter((p) => p.user_id !== user_id);
-      if (receivers.length === 1) {
-        const recipient_id = receivers[0].user_id;
-        const txnType = (String(call_type).toLowerCase() === "video") ? "VIDEO_CALL" : "VOICE_CALL";
-
-        
-
-        const preCall = await BalanceValidator.validatePreCallRequirements(
-          user_id,
-          recipient_id,
-          txnType
-        );
-
-        if (preCall.requiresPayment) {
-          // lock one minute worth of coins (price per minute)
-          const lockResult = await CoinsService.lockCoinsForCall(
-            user_id,
-            preCall.price
-          );
-
-          if (!lockResult.success) {
-            // fail the call creation with insufficient funds
-            return res.status(402).json({
-              success: false,
-              error: lockResult.message || "Insufficient coins to start call",
-            });
-          }
-
-          const session_id = lockResult.session_id;
-
-          // Start in-memory call tracking session
-          CallTrackingService.startCallTracking(
-            session_id,
-            user_id,
-            recipient_id,
-            preCall.price,
-            txnType
-          );
-
-          // Map room_id -> payment/session info for finalization on end
-          CallTrackingService.activePayments[room_id] = {
-            session_id,
-            locked_amount: lockResult.locked_amount || preCall.price,
-            from_user_id: user_id,
-            to_user_id: recipient_id,
-            price_per_minute: preCall.price,
-            transaction_type: txnType,
-          };
-        }
-      }
-    } catch (err) {
-      console.error("Paid call setup error:", err);
-    }
-
-    if (!call) {
-      return res.status(400).json({
-        success: false,
-        error: "Failed to make call",
-      });
-    }
-
-    // ✅ Push notification users
+    // ─────────────────────────────────────────────────────────────
+    // STEP 6: Push notifications
+    // ─────────────────────────────────────────────────────────────
     const receivers = participants.Records.filter(
       (p) => p.user_id !== user_id
     );
@@ -253,13 +279,17 @@ async function makeCall(req, res) {
       });
     }
 
-    // ✅ Response
+    // ─────────────────────────────────────────────────────────────
+    // STEP 7: HTTP response
+    // ─────────────────────────────────────────────────────────────
     res.status(200).json({
       success: true,
       call: { ...call.dataValues, caller_name: callerName },
     });
 
-    // ✅ SOCKET EVENTS (FIXED LOOP)
+    // ─────────────────────────────────────────────────────────────
+    // STEP 8: Socket events
+    // ─────────────────────────────────────────────────────────────
     const messageCopy = JSON.parse(JSON.stringify(NewMessageAfterCreation));
 
     for (const participant of participants.Records) {
@@ -273,7 +303,7 @@ async function makeCall(req, res) {
       }
 
       if (participant.user_id !== user_id) {
-        // delivered
+        // ✅ Mark as delivered for receivers
         await createMessageSeen({
           message_seen_status: "delivered",
           message_id: message.message_id,
@@ -286,7 +316,7 @@ async function makeCall(req, res) {
           orConditions: { message_seen_status: ["delivered", "sent"] },
         });
 
-        // incoming call
+        // ✅ Incoming call event
         emitEvent(user_data.socket_id, "receiving_call", {
           call: { ...call.dataValues, caller_name: callerName },
           user: glob_user,

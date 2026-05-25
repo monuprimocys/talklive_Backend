@@ -53,12 +53,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       comment: "Signature provided in webhook",
     },
-    status: {
-      type: DataTypes.ENUM("PROCESSED", "DUPLICATE", "INVALID", "ERROR"),
-      allowNull: false,
-      defaultValue: "PROCESSED",
-      comment: "Processing status",
-    },
+   status: {
+  type: DataTypes.STRING,
+  allowNull: false,
+  defaultValue: "PROCESSED",
+} ,
     processing_error: {
       type: DataTypes.TEXT,
       allowNull: true,

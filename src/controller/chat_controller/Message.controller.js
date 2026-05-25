@@ -6,7 +6,7 @@ const message_seen_service = require("../../service/repository/Message_seen.serv
 const {
   getUser
 } = require("../../service/repository/user.service");
-const { User, Message, Social, Message_seen } = require("../../../models");
+const { User, Message, Social, Message_seen , Call } = require("../../../models");
 const { Op, Sequelize } = require("sequelize"); // Ensure you're importing Op
 
 async function markChatMessagesSeen({ chat_id, user_id, message_id, emitEvent }) {
@@ -435,6 +435,21 @@ async function message_list(socket, data, emitEvent) {
         },
       ],
     },
+     {
+    model: Call,
+    required: false, // important (not all messages have calls)
+    attributes: [
+      "call_id",
+      "call_type",
+      "call_status",
+      "call_duration",
+      "start_time",
+      "end_time",
+      "users",
+      "current_users",
+      "room_id",
+    ],
+  }
   ];
   const participants =
     await participant_service.getParticipantWithoutPagenation({

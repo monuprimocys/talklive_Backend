@@ -24,12 +24,14 @@ module.exports = (sequelize, DataTypes) => {
         return fullUrl === process.env.baseUrl + "/" ? "" : fullUrl;
       },
     },
-    media_type: {
-      type: DataTypes.ENUM('image', 'video'),
-      allowNull: false,
-      defaultValue: 'image',
-      comment: 'Type of media: image or video',
-    },
+ media_type: {
+  type: DataTypes.STRING,
+  allowNull: false,
+  defaultValue: 'image',
+  validate: {
+    isIn: [['image', 'video']]
+  }
+},
     thumbnail_url: {
       type: DataTypes.STRING,
       allowNull: true,
