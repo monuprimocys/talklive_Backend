@@ -90,30 +90,30 @@ async function getFeed(filterPayload = {}, pagination = { page: 1, pageSize: 10 
 
     const { count, rows } = await Feed.findAndCountAll({
       where: whereCondition,
-       attributes: {
-    include: [
-      [
-        Sequelize.literal(`
+      attributes: {
+        include: [
+          [
+            Sequelize.literal(`
           EXISTS (
             SELECT 1 FROM "FeedLikes" AS fl
             WHERE fl.feed_id = "Feed"."feed_id"
             AND fl.user_id = ${Number(user_id)}
           )
         `),
-        "is_liked"
-      ],
-      [
-        Sequelize.literal(`
+            "is_liked"
+          ],
+          [
+            Sequelize.literal(`
           EXISTS (
             SELECT 1 FROM "FeedSaves" AS fs
             WHERE fs.feed_id = "Feed"."feed_id"
             AND fs.user_id = ${Number(user_id)}
           )
         `),
-        "is_saved"
-      ]
-    ]
-  },
+            "is_saved"
+          ]
+        ]
+      },
       include: includeOptions,
       order: order,
       offset: offset,
@@ -359,16 +359,42 @@ async function addFeedComment(commentPayload) {
  * @param {Object} pagination - Pagination params
  * @returns {Promise<Object>} Comments with pagination
  */
-async function getFeedComments(feedId, pagination = { page: 1, pageSize: 20 }) {
+async function getFeedComments(feedId, pagination = { page: 1, pageSize: 20 }, userId = null) {
   try {
     const { page = 1, pageSize = 20 } = pagination;
     const offset = (Number(page) - 1) * Number(pageSize);
     const limit = Number(pageSize);
 
+    const extraAttributes = [
+      [
+        Sequelize.literal(`(
+          SELECT COUNT(*)::int FROM "FeedComments" AS rc
+          WHERE rc."parent_comment_id" = "FeedComment"."feed_comment_id"
+        )`),
+        'reply_count'
+      ]
+    ];
+
+    if (userId) {
+      extraAttributes.push([
+        Sequelize.literal(`(
+          SELECT EXISTS (
+            SELECT 1 FROM "FeedCommentLikes" AS fcl
+            WHERE fcl."feed_comment_id" = "FeedComment"."feed_comment_id"
+            AND fcl."user_id" = ${Number(userId)}
+          )
+        )`),
+        'is_liked'
+      ]);
+    }
+
     const { count, rows } = await FeedComment.findAndCountAll({
       where: {
         feed_id: feedId,
         parent_comment_id: null // Get only top-level comments
+      },
+      attributes: {
+        include: extraAttributes
       },
       include: [{
         model: User,
@@ -395,6 +421,102 @@ async function getFeedComments(feedId, pagination = { page: 1, pageSize: 20 }) {
 }
 
 /**
+ * Get replies for a specific feed comment
+ * @param {Number} parentCommentId - Parent comment ID
+ * @param {Object} pagination - Pagination params
+ * @returns {Promise<Object>} Replies with pagination
+ */
+async function getFeedCommentReplies(parentCommentId, pagination = { page: 1, pageSize: 20 }, userId = null) {
+  try {
+    const { page = 1, pageSize = 20 } = pagination;
+    const offset = (Number(page) - 1) * Number(pageSize);
+    const limit = Number(pageSize);
+
+    const extraAttributes = [];
+
+    if (userId) {
+      extraAttributes.push([
+        Sequelize.literal(`(
+          SELECT EXISTS (
+            SELECT 1 FROM "FeedCommentLikes" AS fcl
+            WHERE fcl."feed_comment_id" = "FeedComment"."feed_comment_id"
+            AND fcl."user_id" = ${Number(userId)}
+          )
+        )`),
+        'is_liked'
+      ]);
+    }
+
+    const { count, rows } = await FeedComment.findAndCountAll({
+      where: { parent_comment_id: parentCommentId },
+      ...(extraAttributes.length > 0 ? { attributes: { include: extraAttributes } } : {}),
+      include: [{
+        model: User,
+        attributes: ['user_id', 'user_name', 'full_name', 'profile_pic']
+      }],
+      offset,
+      limit,
+      order: [['createdAt', 'ASC']]
+    });
+
+    return {
+      Records: rows,
+      Pagination: {
+        total_records: count,
+        total_pages: Math.ceil(count / limit),
+        current_page: Number(page),
+        records_per_page: limit
+      }
+    };
+  } catch (error) {
+    console.error('Error fetching Feed Comment Replies:', error);
+    throw error;
+  }
+}
+
+/**
+ * Like a feed comment (or reply)
+ * @param {Number} feedCommentId
+ * @param {Number} userId
+ * @returns {Promise<Object|null>} Created like or null if already liked
+ */
+async function addFeedCommentLike(feedCommentId, userId) {
+  try {
+    const existing = await FeedCommentLike.findOne({ where: { feed_comment_id: feedCommentId, user_id: userId } });
+    if (existing) return null;
+
+    const like = await FeedCommentLike.create({ feed_comment_id: feedCommentId, user_id: userId });
+
+    // Increment total_likes on comment
+    await FeedComment.increment('total_likes', { where: { feed_comment_id: feedCommentId } });
+
+    return like;
+  } catch (error) {
+    console.error('Error adding Feed Comment Like:', error);
+    throw error;
+  }
+}
+
+/**
+ * Remove like from a feed comment
+ * @param {Number} feedCommentId
+ * @param {Number} userId
+ * @returns {Promise<Number>} Deleted count
+ */
+async function removeFeedCommentLike(feedCommentId, userId) {
+  try {
+    const result = await FeedCommentLike.destroy({ where: { feed_comment_id: feedCommentId, user_id: userId } });
+    if (result > 0) {
+      await FeedComment.decrement('total_likes', { where: { feed_comment_id: feedCommentId } });
+    }
+    return result;
+  } catch (error) {
+    console.error('Error removing Feed Comment Like:', error);
+    throw error;
+  }
+}
+
+/**
  * Delete a comment
  * @param {Number} commentId - Comment ID
  * @returns {Promise<Number>} Deleted record count
@@ -402,7 +524,7 @@ async function getFeedComments(feedId, pagination = { page: 1, pageSize: 20 }) {
 async function deleteFeedComment(commentId) {
   try {
     const comment = await FeedComment.findOne({ where: { feed_comment_id: commentId } });
-    
+
     if (!comment) {
       return 0;
     }
@@ -625,7 +747,10 @@ module.exports = {
   getFeedLikes,
   addFeedComment,
   getFeedComments,
+  getFeedCommentReplies,
   deleteFeedComment,
+  addFeedCommentLike,
+  removeFeedCommentLike,
   addFeedSave,
   removeFeedSave,
   getUserSavedFeeds,

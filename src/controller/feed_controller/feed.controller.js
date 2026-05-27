@@ -12,7 +12,10 @@ const {
   getFeedLikes,
   addFeedComment,
   getFeedComments,
+  getFeedCommentReplies,
   deleteFeedComment,
+  addFeedCommentLike,
+  removeFeedCommentLike,
   addFeedSave,
   removeFeedSave,
   getUserSavedFeeds,
@@ -23,6 +26,7 @@ const {
 } = require("../../service/repository/Feed.service");
 const { getUser } = require("../../service/repository/user.service");
 const { uploadFileToS3, getPresignedUploadUrl } = require("../../service/common/s3.service");
+const { FeedComment } = require('../../../models');
 const { Op } = require('sequelize');
 
 function parseBoolean(value) {
@@ -155,17 +159,18 @@ async function getPresignedUrl(req, res) {
   }
 }
 
+
 /**
  * Create a new feed post
  * POST /api/feed/create
  */
 async function createFeedPost(req, res) {
   try {
-
-     console.log("req.body", req.body);
-     console.log("req.files", req.files);
+    console.log("req.body", req.body);
+    console.log("req.files", req.files);
 
     const user_id = req.authData.user_id;
+
     const allowedFields = [
       "feed_type",
       "content",
@@ -177,17 +182,21 @@ async function createFeedPost(req, res) {
     let filteredData;
     try {
       filteredData = updateFieldsFilter(req.body, allowedFields);
+
       if ("allow_comments" in filteredData) {
         filteredData.allow_comments = parseBoolean(filteredData.allow_comments);
       }
+
       filteredData.mentioned_users = parseIntegerArray(filteredData.mentioned_users);
       filteredData.user_id = user_id;
+
     } catch (err) {
       return generalResponse(res, {}, "Invalid feed fields", false, true, 400);
     }
 
-    // Validate feed_type
+    /* ---------- VALIDATE FEED TYPE ---------- */
     const validFeedTypes = ['text', 'text_image', 'text_video', 'image_only', 'video_only'];
+
     if (!validFeedTypes.includes(filteredData.feed_type)) {
       return generalResponse(
         res,
@@ -199,118 +208,112 @@ async function createFeedPost(req, res) {
       );
     }
 
-    // Validate content based on feed_type
-    if (filteredData.feed_type === 'text' || filteredData.feed_type === 'text_image' || filteredData.feed_type === 'text_video') {
-      
-      console.log("content", filteredData.content);
-      
+    /* ---------- VALIDATE CONTENT ---------- */
+    if (['text', 'text_image', 'text_video'].includes(filteredData.feed_type)) {
       if (!filteredData.content || filteredData.content.trim().length === 0) {
-        return generalResponse(res, {}, "Content is required for this feed type", false, true, 400);
+        return generalResponse(res, {}, "Content is required", false, true, 400);
       }
     }
 
-    // Validate media for media-based feed types
-    if (filteredData.feed_type === 'image_only' || filteredData.feed_type === 'text_image' || 
-        filteredData.feed_type === 'video_only' || filteredData.feed_type === 'text_video') {
-      
+    /* ---------- VALIDATE MEDIA ---------- */
+    if (filteredData.feed_type !== 'text') {
       if (process.env.MEDIAFLOW === "S3") {
         if (!req.body.file_media_1) {
-          return generalResponse(res, {}, "Media URL is required for this feed type (S3 mode)", false, true, 400);
+          return generalResponse(res, {}, "Media URL required (S3 mode)", false, true, 400);
         }
       } else {
         const files = req.files?.['files'] || [];
-        if (!files || files.length === 0) {
-          return generalResponse(res, {}, "Media file is required for this feed type (Local mode)", false, true, 400);
+        if (!files.length) {
+          return generalResponse(res, {}, "Media file required", false, true, 400);
         }
       }
     }
 
-    // Check if user exists
+    /* ---------- CHECK USER ---------- */
     const isUser = await getUser({ user_id });
     if (!isUser) {
       return generalResponse(res, {}, "Invalid User", false, true, 401);
     }
 
-    // Extract hashtags from content
-    if (filteredData.content) {
-      filteredData.hashtags = extractHashtags(filteredData.content);
-    } else {
-      filteredData.hashtags = [];
-    }
+    /* ---------- HASHTAGS ---------- */
+    filteredData.hashtags = filteredData.content
+      ? extractHashtags(filteredData.content)
+      : [];
 
-    // Create feed post
+    /* ---------- CREATE FEED ---------- */
     const feed = await createFeed(filteredData);
 
     if (!feed) {
-      return generalResponse(res, {}, "Failed to create feed post", false, true, 500);
+      return generalResponse(res, {}, "Failed to create feed", false, true, 500);
     }
 
-    /* ---------- HANDLE MEDIA UPLOAD ---------- */
+    /* ---------- HANDLE MEDIA ---------- */
     if (filteredData.feed_type !== 'text') {
-      let mediaUrl;
-      let mediaType;
-
-      // Determine media type from feed_type
-      if (filteredData.feed_type === 'image_only' || filteredData.feed_type === 'text_image') {
-        mediaType = 'image';
-      } else if (filteredData.feed_type === 'video_only' || filteredData.feed_type === 'text_video') {
-        mediaType = 'video';
-      }
-
-
-        console.log("files@@@@@@@@@@@@@@@@@@@@@@@", req.files);
-
 
       /* ---------- S3 MODE ---------- */
       if (process.env.MEDIAFLOW === "S3") {
-        mediaUrl = req.body.file_media_1;
-        
-        if (!mediaUrl) {
-          return generalResponse(res, {}, "Media URL is missing", false, true, 400);
-        }
 
-        // Create media record
         const mediaPayload = {
           feed_id: feed.feed_id,
-          media_url: mediaUrl,
-          media_type: mediaType,
+          media_url: req.body.file_media_1,
+          media_type:
+            ['image_only', 'text_image'].includes(filteredData.feed_type)
+              ? 'image'
+              : 'video',
           order: 0
         };
 
         await addFeedMedia(mediaPayload);
+      }
 
-      } 
       /* ---------- LOCAL MODE ---------- */
       else {
-       
-const files = req.files?.['files'] || [];
+        const files = req.files?.['files'] || [];
 
-const thumbnailFile = files[0];
-const videoFile = files[1];
+        let mediaType;
+        let mediaUrl;
+        let thumbnailUrl = null;
 
-if (!videoFile) {
-  return generalResponse(res, {}, "File is missing", false, true, 400);
-}
+        /* ===== IMAGE CASE ===== */
+        if (['image_only', 'text_image'].includes(filteredData.feed_type)) {
+          const imageFile = files[0];
 
-let mediaType = videoFile.mimetype.startsWith('video') ? 'video' : 'image';
+          if (!imageFile) {
+            return generalResponse(res, {}, "Image file required", false, true, 400);
+          }
 
-const mediaUrl = videoFile.path;
+          mediaType = 'image';
+          mediaUrl = imageFile.path;
+        }
 
-// ✅ IMPORTANT FIX HERE
-const thumbnailUrl = thumbnailFile ? thumbnailFile.path : null;
+        /* ===== VIDEO CASE ===== */
+        else if (['video_only', 'text_video'].includes(filteredData.feed_type)) {
+          const thumbnailFile = files[0]; // optional
+          const videoFile = files[1];     // required
 
-const mediaPayload = {
-  feed_id: feed.feed_id,
-  media_type: mediaType,
-  thumbnail_url: thumbnailUrl,   // ✅ STRING NOT OBJECT
-  media_url: mediaUrl,
-  order: 0
-};
+          if (!videoFile) {
+            return generalResponse(res, {}, "Video file required", false, true, 400);
+          }
 
-await addFeedMedia(mediaPayload);
+          mediaType = 'video';
+          mediaUrl = videoFile.path;
+          thumbnailUrl = thumbnailFile ? thumbnailFile.path : null;
+        }
+
+        /* ---------- SAVE MEDIA ---------- */
+        const mediaPayload = {
+          feed_id: feed.feed_id,
+          media_type: mediaType,
+          media_url: mediaUrl,
+          thumbnail_url: thumbnailUrl,
+          order: 0
+        };
+
+        await addFeedMedia(mediaPayload);
       }
     }
 
+    /* ---------- SUCCESS ---------- */
     return generalResponse(
       res,
       { feed_id: feed.feed_id },
@@ -319,12 +322,14 @@ await addFeedMedia(mediaPayload);
       true,
       201
     );
+
   } catch (error) {
     console.error("Error in createFeedPost:", error);
+
     return generalResponse(
       res,
       {},
-      "Something went wrong while creating feed post",
+      "Something went wrong",
       false,
       true,
       500
@@ -836,13 +841,14 @@ async function addCommentToFeed(req, res) {
 async function getFeedPostComments(req, res) {
   try {
     const { feed_id } = req.params;
+    const user_id = req.authData?.user_id || null;
     const { page = 1, pageSize = 20 } = req.body;
 
     if (!feed_id || isNaN(feed_id)) {
       return generalResponse(res, {}, "Invalid feed ID", false, true, 400);
     }
 
-    const comments = await getFeedComments(parseInt(feed_id), { page, pageSize });
+    const comments = await getFeedComments(parseInt(feed_id), { page, pageSize }, user_id);
 
     return generalResponse(
       res,
@@ -1018,6 +1024,220 @@ async function getUserSavedFeedsController(req, res) {
 }
 
 /**
+ * Get feeds created by the authenticated user
+ * POST /api/feed/get-my-feeds
+ */
+async function getMyFeeds(req, res) {
+  try {
+    const { page = 1, pageSize = 10, user_id } = req.body;
+
+    if (!user_id) {
+      return generalResponse(res, {}, "Invalid user token", false, true, 401);
+    }
+
+    const filterPayload = {
+      user_id: Number(user_id),
+      status: true,
+      deleted_by_user: false
+    };
+
+    const feeds = await getFeed(filterPayload, { page: Number(page), pageSize: Number(pageSize) }, [], [["createdAt", "DESC"]], user_id);
+
+    return generalResponse(
+      res,
+      feeds,
+      "User feeds retrieved successfully",
+      true,
+      false,
+      200
+    );
+  } catch (error) {
+    console.error("Error in getMyFeeds:", error);
+    return generalResponse(
+      res,
+      {},
+      "Something went wrong while fetching your feeds",
+      false,
+      true,
+      500
+    );
+  }
+}
+
+/**
+ * Add a reply to a feed comment
+ * POST /api/feed/add-reply
+ */
+async function addReplyToComment(req, res) {
+  try {
+    const user_id = req.authData.user_id;
+    const { feed_id, parent_comment_id, comment_text } = req.body;
+
+    if (!feed_id || isNaN(feed_id) || !parent_comment_id || isNaN(parent_comment_id)) {
+      return generalResponse(res, {}, "Invalid feed_id or parent_comment_id", false, true, 400);
+    }
+
+    if (!comment_text || comment_text.trim().length === 0) {
+      return generalResponse(res, {}, "Comment text is required", false, true, 400);
+    }
+
+    const commentPayload = {
+      feed_id: parseInt(feed_id),
+      user_id,
+      comment_text,
+      parent_comment_id: parseInt(parent_comment_id),
+      mentioned_users: []
+    };
+
+    const comment = await addFeedComment(commentPayload);
+
+    return generalResponse(
+      res,
+      { feed_comment_id: comment.feed_comment_id },
+      "Reply added successfully",
+      true,
+      true,
+      201
+    );
+  } catch (error) {
+    console.error("Error in addReplyToComment:", error);
+    return generalResponse(res, {}, "Something went wrong while adding reply", false, true, 500);
+  }
+}
+
+/**
+ * Get replies for a comment
+ * GET /api/feed/get-replies/:comment_id
+ */
+async function getCommentReplies(req, res) {
+  try {
+    const { page = 1, pageSize = 20, comment_id } = req.body;
+    const user_id = req.authData?.user_id || null;
+
+    if (!comment_id || isNaN(comment_id)) {
+      return generalResponse(res, {}, "Invalid comment ID", false, true, 400);
+    }
+
+    const replies = await getFeedCommentReplies(parseInt(comment_id), { page, pageSize }, user_id);
+
+    return generalResponse(res, replies, "Replies retrieved successfully", true, false, 200);
+  } catch (error) {
+    console.error("Error in getCommentReplies:", error);
+    return generalResponse(res, {}, "Something went wrong while fetching replies", false, true, 500);
+  }
+}
+
+/**
+ * Like a feed comment OR a reply (sub-comment)
+ * POST /api/feed/like-comment
+ * Body: { feed_comment_id }
+ */
+async function likeComment(req, res) {
+  try {
+    const { feed_comment_id } = req.body;
+    const user_id = req.authData.user_id;
+
+    if (!feed_comment_id || isNaN(feed_comment_id)) {
+      return generalResponse(res, {}, "Invalid feed comment ID", false, true, 400);
+    }
+
+    const comment = await FeedComment.findOne({
+      where: { feed_comment_id: parseInt(feed_comment_id) }
+    });
+
+    if (!comment) {
+      return generalResponse(res, {}, "Comment or reply not found", false, true, 404);
+    }
+
+    const like = await addFeedCommentLike(parseInt(feed_comment_id), user_id);
+
+    if (like === null) {
+      // Already liked — just return current state
+      return generalResponse(
+        res,
+        { feed_comment_id: parseInt(feed_comment_id), is_liked: true, total_likes: comment.total_likes },
+        "Comment already liked",
+        false,
+        true,
+        409
+      );
+    }
+
+    return generalResponse(
+      res,
+      {
+        feed_comment_id: parseInt(feed_comment_id),
+        feed_comment_like_id: like.feed_comment_like_id,
+        is_liked: true,
+        total_likes: comment.total_likes + 1
+      },
+      "Comment liked successfully",
+      true,
+      true,
+      201
+    );
+  } catch (error) {
+    console.error("Error in likeComment:", error);
+    return generalResponse(res, {}, "Something went wrong while liking comment", false, true, 500);
+  }
+}
+
+/**
+ * Unlike a feed comment OR a reply (sub-comment)
+ * POST /api/feed/unlike-comment
+ * Body: { feed_comment_id }
+ */
+async function unlikeComment(req, res) {
+  try {
+    const { feed_comment_id } = req.body;
+    const user_id = req.authData.user_id;
+
+    if (!feed_comment_id || isNaN(feed_comment_id)) {
+      return generalResponse(res, {}, "Invalid feed comment ID", false, true, 400);
+    }
+
+    // Verify the comment (or reply) exists
+    const { FeedComment } = require('../../../models');
+    const comment = await FeedComment.findOne({
+      where: { feed_comment_id: parseInt(feed_comment_id) }
+    });
+
+    if (!comment) {
+      return generalResponse(res, {}, "Comment or reply not found", false, true, 404);
+    }
+
+    const result = await removeFeedCommentLike(parseInt(feed_comment_id), user_id);
+
+    if (result === 0) {
+      return generalResponse(
+        res,
+        { feed_comment_id: parseInt(feed_comment_id), is_liked: false, total_likes: comment.total_likes },
+        "Comment was not liked by user",
+        false,
+        true,
+        404
+      );
+    }
+
+    return generalResponse(
+      res,
+      {
+        feed_comment_id: parseInt(feed_comment_id),
+        is_liked: false,
+        total_likes: Math.max(0, comment.total_likes - 1)
+      },
+      "Comment like removed successfully",
+      true,
+      true,
+      200
+    );
+  } catch (error) {
+    console.error("Error in unlikeComment:", error);
+    return generalResponse(res, {}, "Something went wrong while unliking comment", false, true, 500);
+  }
+}
+
+/**
  * Report a feed post
  * POST /api/feed/report-feed
  */
@@ -1078,8 +1298,13 @@ module.exports = {
   addCommentToFeed,
   getFeedPostComments,
   deleteCommentFromFeed,
+  addReplyToComment,
+  getCommentReplies,
+  likeComment,
+  unlikeComment,
   saveFeedPost,
   unsaveFeedPost,
+  getMyFeeds,
   getUserSavedFeedsController,
   reportFeedPost,
   uploadMediaS3,

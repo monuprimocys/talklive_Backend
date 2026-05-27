@@ -154,6 +154,26 @@ router.post('/get-comments/:feed_id', authMiddleware, feed_controller.getFeedPos
 router.delete('/delete-comment/:comment_id', authMiddleware, feed_controller.deleteCommentFromFeed);
 
 /**
+ * Reply to a comment
+ * POST /api/feed/add-reply
+ */
+router.post('/add-reply', authMiddleware, feed_controller.addReplyToComment);
+
+/**
+ * Get replies for a comment
+ * GET /api/feed/get-replies/:comment_id
+ * @param  comment_id  - ID of the parent comment whose replies to fetch
+ * @body   { page, pageSize } - Pagination params (optional)
+ */
+router.post('/get-replies', authMiddleware, feed_controller.getCommentReplies);
+
+/**
+ * Like / Unlike comment (reply or top-level)
+ */
+router.post('/like-comment', authMiddleware, feed_controller.likeComment);
+router.post('/unlike-comment', authMiddleware, feed_controller.unlikeComment);
+
+/**
  * @route   POST /api/feed/save-feed
  * @desc    Save a feed post
  * @access  Private
@@ -194,6 +214,14 @@ router.post('/get-saved-feeds', authMiddleware, feed_controller.getUserSavedFeed
  *   "report_description": "Detailed description"
  * }
  */
+/**
+ * @route   POST /api/feed/get-my-feeds
+ * @desc    Get all feeds created by the authenticated user
+ * @access  Private
+ * @body    { "page": 1, "pageSize": 10 }
+ */
+router.post('/get-my-feeds', authMiddleware, feed_controller.getMyFeeds);
+
 router.post('/report-feed', authMiddleware, feed_controller.reportFeedPost);
 
 module.exports = router;
