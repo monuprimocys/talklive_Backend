@@ -4,6 +4,8 @@ const { getUser } = require("../../service/repository/user.service");
 const participant_service = require("../../service/repository/Participant.service");
 const { User } = require("../../../models");
 const { getChat } = require("../../service/repository/Chat.service");
+const CallTrackingService = require("../../service/payment/call-tracking.service");
+const CoinsService = require("../../service/payment/coins.service");
 
 /**
  * Handles when a user leaves an ongoing call.
@@ -20,7 +22,7 @@ async function leaveCall(socket, data, emitEvent, emitToRoom, leaveRoom) {
     }
 
     const user_id = socket.authData.user_id;
-console.log(`[leave_call] ► user_id=${user_id} call_id=${data.call_id} peer_id=${data.peer_id} chat_id=${data.chat_id} socket_id=${socket.id}`);
+    console.log(`[leave_call] ► user_id=${user_id} call_id=${data.call_id} peer_id=${data.peer_id} chat_id=${data.chat_id} socket_id=${socket.id}`);
     // ✅ Check if user is a participant in the chat
     const isParticipant = await participant_service.isParticipant(
       user_id,
@@ -70,6 +72,14 @@ console.log(`[leave_call] ► user_id=${user_id} call_id=${data.call_id} peer_id
         current_users: [],
       });
 
+      // ✅ Release locked coins if call was missed
+      const room_id = call.room_id;
+      const paymentInfo = CallTrackingService.activePayments[room_id];
+      if (paymentInfo) {
+        await CoinsService.releaseLockedCoins(paymentInfo.from_user_id, paymentInfo.locked_amount);
+        delete CallTrackingService.activePayments[room_id];
+      }
+
       // Fetch participants to notify about the missed call
       const participants =
         await participant_service.getParticipantWithoutPagenation(
@@ -86,7 +96,7 @@ console.log(`[leave_call] ► user_id=${user_id} call_id=${data.call_id} peer_id
       call = await call_service.getCall({ call_id: data.call_id }, [
         {
           model: User,
-          attributes: ["user_id", "profile_pic",  "full_name", "user_name"],
+          attributes: ["user_id", "profile_pic", "full_name", "user_name"],
           as: "caller",
         },
       ]);
@@ -140,6 +150,18 @@ console.log(`[leave_call] ► user_id=${user_id} call_id=${data.call_id} peer_id
         current_users: [],
       });
 
+      // ✅ Finalize billing or release locked coins
+      const room_id = call.room_id;
+      const paymentInfo = CallTrackingService.activePayments[room_id];
+      if (paymentInfo) {
+        const trackingResult = CallTrackingService.endCallTracking(paymentInfo.session_id);
+
+        // If call was very short (less than 1 min) and no billing happened, release locked coins
+        // Actually, startBillingLoop already does first deduction.
+        // So we just need to clean up.
+        delete CallTrackingService.activePayments[room_id];
+      }
+
       // Fetch all chat participants
       const participants =
         await participant_service.getParticipantWithoutPagenation(
@@ -177,7 +199,7 @@ console.log(`[leave_call] ► user_id=${user_id} call_id=${data.call_id} peer_id
       call = await call_service.getCall({ call_id: data.call_id }, [
         {
           model: User,
-          attributes: ["user_id", "profile_pic",  "full_name", "user_name"],
+          attributes: ["user_id", "profile_pic", "full_name", "user_name"],
           as: "caller",
         },
       ]);

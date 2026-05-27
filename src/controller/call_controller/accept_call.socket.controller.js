@@ -2,6 +2,8 @@ const call_service = require("../../service/repository/call.service");
 const message_service = require("../../service/repository/Message.service");
 const { getUser } = require("../../service/repository/user.service");
 const participant_service = require("../../service/repository/Participant.service");
+const CallTrackingService = require("../../service/payment/call-tracking.service");
+const { emitEvent: socketEmit } = require("../../service/common/socket.service");
 
 // In-memory peer map: room_id → [{ user_id, peer_id, socket_id }]
 // Tracks who is already in a room so a late joiner (e.g. iOS) can call them
@@ -87,6 +89,23 @@ async function acceptCall(socket, data, emitEvent, emitToRoom, joinRoom) {
       { message_id: call.message_id },
       { message_content: "ongoing" }
     );
+
+    // ✅ Start billing loop if this is a paid call
+    const paymentInfo = CallTrackingService.activePayments[room_id];
+    if (paymentInfo) {
+      CallTrackingService.startBillingLoop(
+        paymentInfo.session_id,
+        room_id,
+        (room, reason) => {
+          // Callback for auto-termination (e.g. out of coins)
+          emitToRoom(room, "call_ended", {
+            call_id: data.call_id,
+            reason: reason,
+            message: "Call ended due to insufficient balance"
+          });
+        }
+      );
+    }
 
     // ✅ Fetch user details for notifying other participants
     const user = await getUser({ user_id: user_id });

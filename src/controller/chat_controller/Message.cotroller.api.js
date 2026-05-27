@@ -63,7 +63,7 @@ async function sendMessage(req, res) {
           isSocial.Records[0].reel_thumbnail;
       }
 
-     if (filteredDataPayload.message_type === "image" && !req.body.is_forwarded) {
+      if (filteredDataPayload.message_type === "image" && !req.body.is_forwarded) {
         if (process.env.MEDIAFLOW == "S3") {
           if (!req.body.file_media_1) {
             return generalResponse(
@@ -238,13 +238,13 @@ async function sendMessage(req, res) {
     // ==================== PAID MESSAGE CHECK ====================
     // Determine the recipient user_id
     let recipient_id = filteredDataPayload.user_id || null;
-    
+
     // If no direct user_id, try to get from chat_id
     if (!recipient_id && filteredDataPayload.chat_id) {
       const chatParticipants = await participant_service.getParticipantWithoutPagenation({
         chat_id: filteredDataPayload.chat_id,
       });
-      
+
       if (chatParticipants && chatParticipants.Records) {
         for (const participant of chatParticipants.Records) {
           if (participant.user_id !== user_id) {
@@ -306,18 +306,6 @@ async function sendMessage(req, res) {
       },
     ];
 
-    filteredDataPayload.sender_id = user_id;
-    const newMessage = await message_service.createMessage(filteredDataPayload);
-    const messageSeenBySender = await message_seen_service.createMessageSeen(
-      {
-        message_seen_status: "seen",
-        message_id: newMessage.message_id,
-        chat_id: filteredDataPayload.chat_id,
-        user_id: glob_user.user_id
-      }
-    )
-
-
     // ==================== PROCESS PAID MESSAGE ====================
     if (isPaidMessage && recipient_id && messagePrice > 0) {
       const coinDeductionResult = await CoinsService.deductCoins(
@@ -331,11 +319,46 @@ async function sendMessage(req, res) {
       );
 
       if (!coinDeductionResult.success) {
-        // Log error but don't block message - it's already sent
-        console.error("Coin deduction failed for message:", coinDeductionResult);
+        return generalResponse(
+          res,
+          {
+            success: false,
+            error_code: coinDeductionResult.error_code || "DEDUCTION_FAILED",
+          },
+          coinDeductionResult.message || "Failed to process payment for message",
+          false,
+          true,
+          400
+        );
+      }
+
+      // ✅ Emit balance updates to both users
+      const sender = await getUser({ user_id: user_id });
+      const recipient = await getUser({ user_id: recipient_id });
+
+      if (sender) {
+        socket_service.emitEvent(sender.socket_id, "balance_update", {
+          available_coins: sender.available_coins,
+        });
+      }
+      if (recipient) {
+        socket_service.emitEvent(recipient.socket_id, "balance_update", {
+          available_coins: recipient.available_coins,
+        });
       }
     }
     // ==================== END PROCESS PAID MESSAGE ====================
+
+    filteredDataPayload.sender_id = user_id;
+    const newMessage = await message_service.createMessage(filteredDataPayload);
+    const messageSeenBySender = await message_seen_service.createMessageSeen(
+      {
+        message_seen_status: "seen",
+        message_id: newMessage.message_id,
+        chat_id: filteredDataPayload.chat_id,
+        user_id: glob_user.user_id
+      }
+    )
 
     if (newMessage) {
       let NewMessageAfterCreation = await message_service.getMessages(

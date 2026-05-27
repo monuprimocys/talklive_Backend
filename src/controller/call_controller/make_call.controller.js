@@ -185,8 +185,9 @@ async function makeCall(req, res) {
 
           const session_id = lockResult.session_id;
 
-          CallTrackingService.startCallTracking(
+          CallTrackingService.prepareCallTracking(
             session_id,
+            call.call_id,
             user_id,
             recipient_id,
             preCall.price,
@@ -195,6 +196,7 @@ async function makeCall(req, res) {
 
           CallTrackingService.activePayments[room_id] = {
             session_id,
+            call_id: call.call_id, // ✅ Store call_id for DB updates
             locked_amount: lockResult.locked_amount || preCall.price,
             from_user_id: user_id,
             to_user_id: recipient_id,

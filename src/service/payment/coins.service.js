@@ -42,7 +42,7 @@ class CoinsService {
       }
 
       // Check balance
-      const current_balance = sender.available_coins || 0;
+      const current_balance = Number(sender.available_coins) || 0;
       if (current_balance < coins) {
         await transaction.rollback();
         return {
@@ -81,7 +81,7 @@ class CoinsService {
       const netToRecipient = Math.max(0, coins - commission);
 
       // Add net amount to recipient (platform keeps commission off-chain)
-      const recipient_current_balance = recipient.available_coins || 0;
+      const recipient_current_balance = Number(recipient.available_coins) || 0;
       await recipient.update(
         {
           available_coins: recipient_current_balance + netToRecipient,
@@ -140,6 +140,12 @@ class CoinsService {
    * @param {number} coins_to_lock - Coins to lock
    * @returns {object} - Lock result with session_id
    */
+  /**
+   * Lock coins for a call (pre-authorization)
+   * @param {number} user_id - User ID to lock coins from
+   * @param {number} coins_to_lock - Coins to lock
+   * @returns {object} - Lock result with session_id
+   */
   static async lockCoinsForCall(user_id, coins_to_lock) {
     const transaction = await db.sequelize.transaction();
 
@@ -158,7 +164,7 @@ class CoinsService {
         };
       }
 
-      const current_balance = user.available_coins || 0;
+      const current_balance = Number(user.available_coins) || 0;
 
       if (current_balance < coins_to_lock) {
         await transaction.rollback();
@@ -195,6 +201,78 @@ class CoinsService {
         success: false,
         message: "Error locking coins",
         error_code: "LOCK_ERROR",
+      };
+    }
+  }
+
+  /**
+   * Finalize locked coins (credit to recipient when call is accepted)
+   * @param {number} from_user_id - Sender user ID
+   * @param {number} to_user_id - Recipient user ID
+   * @param {number} coins - Coins to finalize
+   * @param {string} call_type - VOICE_CALL or VIDEO_CALL
+   * @returns {object} - Result
+   */
+  static async finalizeLockedCoins(from_user_id, to_user_id, coins, call_type) {
+    const transaction = await db.sequelize.transaction();
+
+    try {
+      const recipient = await db.User.findByPk(to_user_id, {
+        transaction,
+        lock: true,
+      });
+
+      if (!recipient) {
+        await transaction.rollback();
+        return {
+          success: false,
+          message: "Recipient not found",
+          error_code: "RECIPIENT_NOT_FOUND",
+        };
+      }
+
+      // Platform commission
+      const commissionPercent = parseFloat(process.env.COMMISSION_PERCENT) || 0;
+      const commission = commissionPercent > 0 ? Math.floor((coins * commissionPercent) / 100) : 0;
+      const netToRecipient = Math.max(0, coins - commission);
+
+      const recipient_current_balance = Number(recipient.available_coins) || 0;
+      await recipient.update(
+        {
+          available_coins: recipient_current_balance + netToRecipient,
+        },
+        { transaction }
+      );
+
+      // Create transaction record
+      await db.CoinTransaction.create(
+        {
+          from_user_id,
+          to_user_id,
+          transaction_type: call_type || "VOICE_CALL",
+          coins_deducted: netToRecipient,
+          status: "COMPLETED",
+          description: `Initial minute for call | commission:${commission}`,
+          completed_at: new Date(),
+        },
+        { transaction }
+      );
+
+      await transaction.commit();
+
+      return {
+        success: true,
+        message: "Locked coins finalized successfully",
+        netToRecipient,
+        recipient_new_balance: recipient_current_balance + netToRecipient,
+      };
+    } catch (error) {
+      await transaction.rollback();
+      console.error("Finalize locked coins error:", error);
+      return {
+        success: false,
+        message: "Error finalizing locked coins",
+        error_code: "FINALIZE_ERROR",
       };
     }
   }
@@ -405,44 +483,44 @@ class CoinsService {
    * @returns {object} - Balance details
    */
   static async getBalance(user_id) {
-  try {
-    const user = await db.User.findByPk(user_id, {
-      attributes: ["user_id", "available_coins"],
-    });
+    try {
+      const user = await db.User.findByPk(user_id, {
+        attributes: ["user_id", "available_coins"],
+      });
 
-    if (!user) {
+      if (!user) {
+        return {
+          success: false,
+          message: "User not found",
+          error_code: "USER_NOT_FOUND",
+        };
+      }
+
+      // ✅ Sequelize ORM way (no raw SQL)
+      const total_earned = await db.CoinTransaction.sum("coins_deducted", {
+        where: {
+          to_user_id: user_id,
+          status: "COMPLETED",
+        },
+      });
+
+      return {
+        success: true,
+        data: {
+          user_id,
+          available_coins: user.available_coins || 0,
+          total_earned: total_earned || 0,
+        },
+      };
+    } catch (error) {
+      console.error("Balance fetch error:", error);
       return {
         success: false,
-        message: "User not found",
-        error_code: "USER_NOT_FOUND",
+        message: "Error fetching balance",
+        error_code: "BALANCE_ERROR",
       };
     }
-
-    // ✅ Sequelize ORM way (no raw SQL)
-    const total_earned = await db.CoinTransaction.sum("coins_deducted", {
-      where: {
-        to_user_id: user_id,
-        status: "COMPLETED",
-      },
-    });
-
-    return {
-      success: true,
-      data: {
-        user_id,
-        available_coins: user.available_coins || 0,
-        total_earned: total_earned || 0,
-      },
-    };
-  } catch (error) {
-    console.error("Balance fetch error:", error);
-    return {
-      success: false,
-      message: "Error fetching balance",
-      error_code: "BALANCE_ERROR",
-    };
   }
-}
 }
 
 module.exports = CoinsService;

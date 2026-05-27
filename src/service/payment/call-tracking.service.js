@@ -10,41 +10,173 @@ class CallTrackingService {
   static activePayments = {};
 
   /**
-   * Start tracking a call session
+   * Prepare call tracking (during ringing)
    * @param {string} session_id - Unique call session ID
    * @param {number} from_user_id - Caller user ID
    * @param {number} to_user_id - Receiver user ID
    * @param {number} price_per_minute - Coins per minute
    * @param {string} call_type - VOICE_CALL or VIDEO_CALL
-   * @returns {object} - Call session details
+   * @returns {object} - Prepared session
    */
-  static startCallTracking(
+  static prepareCallTracking(
     session_id,
+    call_id,
     from_user_id,
     to_user_id,
     price_per_minute,
     call_type
   ) {
-    const startTime = Date.now();
-
-    this.activeCalls[session_id] = {
+    const session = {
       session_id,
+      call_id,
       from_user_id,
       to_user_id,
       price_per_minute,
       call_type,
-      start_time: startTime,
-      duration_seconds: 0,
-      is_active: true,
+      is_active: false, // Not active until accepted
+      start_time: null,
+      last_billing_time: null,
+      billing_interval: null,
       warnings_sent: [],
     };
 
-    return {
-      success: true,
-      message: "Call tracking started",
-      session_id,
-      start_time: startTime,
-    };
+    this.activeCalls[session_id] = session;
+    return session;
+  }
+
+  /**
+   * Start billing loop (when call is accepted)
+   * @param {string} session_id - Call session ID
+   * @param {string} room_id - Socket room ID
+   * @param {function} onTerminate - Callback to terminate call via socket
+   */
+  static async startBillingLoop(session_id, room_id, onTerminate) {
+    const session = this.activeCalls[session_id];
+    if (!session || session.billing_interval) return;
+
+    const CoinsService = require("./coins.service");
+    const { emitEvent } = require("../common/socket.service");
+    const { getUser } = require("../repository/user.service");
+
+    session.is_active = true;
+    session.start_time = Date.now();
+    session.last_billing_time = session.start_time;
+    session.room_id = room_id;
+
+    // Start per-minute billing loop
+    if (session.price_per_minute > 0) {
+      // 1. Finalize the first minute (already locked during makeCall)
+      const finalizeResult = await CoinsService.finalizeLockedCoins(
+        session.from_user_id,
+        session.to_user_id,
+        session.price_per_minute,
+        session.call_type
+      );
+
+      if (finalizeResult.success) {
+        console.log(`[Billing] ✅ Finalized first minute for session ${session_id}`);
+
+        // Emit balance updates to both users
+        const caller = await getUser({ user_id: session.from_user_id });
+        const recipient = await getUser({ user_id: session.to_user_id });
+
+        if (caller) {
+          emitEvent(caller.socket_id, "balance_update", {
+            available_coins: caller.available_coins,
+          });
+        }
+        if (recipient) {
+          emitEvent(recipient.socket_id, "balance_update", {
+            available_coins: recipient.available_coins,
+          });
+        }
+      }
+
+      // 2. Start interval for subsequent minutes (starting from minute 2)
+      session.billing_interval = setInterval(async () => {
+        await this.processMinuteBilling(session_id, onTerminate);
+      }, 60000); // Every 60 seconds
+    }
+  }
+
+  /**
+   * Process per-minute billing for an active call
+   * @param {string} session_id - Call session ID
+   * @param {function} onTerminate - Callback to terminate call
+   */
+  static async processMinuteBilling(session_id, onTerminate) {
+    const session = this.activeCalls[session_id];
+    if (!session || !session.is_active) return;
+
+    const CoinsService = require("./coins.service");
+    const { emitEvent } = require("../common/socket.service");
+    const { getUser } = require("../repository/user.service");
+
+    try {
+      // Deduct coins for the next minute
+      const result = await CoinsService.deductCoins(
+        session.from_user_id,
+        session.to_user_id,
+        session.price_per_minute,
+        session.call_type,
+        {
+          session_id: session.session_id,
+          description: `Per-minute billing for ${session.call_type}`,
+        }
+      );
+
+      if (!result.success) {
+        console.log(`[Billing] ❌ Insufficient coins for session ${session_id}. Terminating.`);
+
+        // Auto-terminate call
+        this.terminateCall(session_id, "INSUFFICIENT_COINS");
+
+        // ✅ Update DB status
+        const call_service = require("../repository/call.service");
+        const message_service = require("../repository/Message.service");
+        const call = await call_service.getCall({ call_id: session.call_id });
+
+        if (call) {
+          const duration = Math.floor((Date.now() - new Date(call.start_time)) / 1000);
+
+          await call_service.updateCallStatus(session.call_id, {
+            call_status: "ended",
+            end_time: new Date(),
+            call_duration: duration,
+            current_users: [],
+          });
+
+          await message_service.updateMessage(
+            { message_id: call.message_id },
+            { message_content: "ended" }
+          );
+        }
+
+        if (onTerminate) {
+          onTerminate(session.room_id, "INSUFFICIENT_COINS");
+        }
+      } else {
+        session.last_billing_time = Date.now();
+        console.log(`[Billing] ✅ Deducted ${session.price_per_minute} coins for session ${session_id}`);
+
+        // Emit balance updates to both users
+        const caller = await getUser({ user_id: session.from_user_id });
+        const recipient = await getUser({ user_id: session.to_user_id });
+
+        if (caller) {
+          emitEvent(caller.socket_id, "balance_update", {
+            available_coins: caller.available_coins,
+          });
+        }
+        if (recipient) {
+          emitEvent(recipient.socket_id, "balance_update", {
+            available_coins: recipient.available_coins,
+          });
+        }
+      }
+    } catch (error) {
+      console.error(`[Billing] ❌ Error in minute billing for session ${session_id}:`, error);
+    }
   }
 
   /**
@@ -151,6 +283,12 @@ class CallTrackingService {
       };
     }
 
+    // Stop billing interval
+    if (callSession.billing_interval) {
+      clearInterval(callSession.billing_interval);
+      callSession.billing_interval = null;
+    }
+
     const end_time = Date.now();
     const duration_ms = end_time - callSession.start_time;
     const duration_seconds = Math.floor(duration_ms / 1000);
@@ -197,6 +335,12 @@ class CallTrackingService {
         message: "Call session not found",
         error_code: "SESSION_NOT_FOUND",
       };
+    }
+
+    // Stop billing interval
+    if (callSession.billing_interval) {
+      clearInterval(callSession.billing_interval);
+      callSession.billing_interval = null;
     }
 
     const end_time = Date.now();
@@ -279,3 +423,4 @@ if (typeof setInterval !== "undefined") {
 }
 
 module.exports = CallTrackingService;
+
