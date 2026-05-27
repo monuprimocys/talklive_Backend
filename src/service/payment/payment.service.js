@@ -30,7 +30,7 @@ class PaymentService {
   /**
    * Create a payment request
    */
-  async createPayment(userId, coins, currency, amountUsd, planId = null) {
+  async createPayment(userId, coins, currency, amountUsd, planId = null, paymentMethod = null) {
     const transaction = await db.sequelize.transaction();
 
     try {
@@ -64,8 +64,18 @@ class PaymentService {
         }
         finalCoins = plan.coins;
         finalAmount = Number(plan.corresponding_money);
-        // Use provided currency if available, otherwise use plan currency, default to USD
-        finalCurrency = currency || plan.currency || "USD";
+
+        // ✅ Dynamic Currency Logic based on Payment Method
+        if (paymentMethod === "nowpayments") {
+          // NOWPayments uses the plan's currency (e.g., INR)
+          finalCurrency = plan.currency || "USD";
+        } else if (paymentMethod === "stripe" || paymentMethod === "paypal") {
+          // Stripe/Paypal might require USD for certain accounts
+          // You can change this to plan.currency if your accounts support it
+          finalCurrency = "USD";
+        } else {
+          finalCurrency = currency || plan.currency || "USD";
+        }
       }
 
       // Validate inputs

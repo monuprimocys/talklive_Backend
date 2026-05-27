@@ -14,7 +14,7 @@ const PaymentService = require("../../service/payment/payment.service");
 async function createPayment(req, res) {
   try {
     const user_id = req.authData.user_id;
-    const { coins, currency, amount_usd, plan_id } = req.body;
+    const { coins, currency, amount_usd, plan_id, payment_method } = req.body;
 
     // Validate request body
     if (!plan_id && (!coins || !currency || !amount_usd)) {
@@ -33,6 +33,7 @@ async function createPayment(req, res) {
       coins,
       currency,
       amount_usd,
+      payment_method
     });
 
     const result = await PaymentService.createPayment(
@@ -40,7 +41,8 @@ async function createPayment(req, res) {
       coins,
       currency,
       amount_usd,
-      plan_id
+      plan_id,
+      payment_method
     );
 
     if (!result.success) {

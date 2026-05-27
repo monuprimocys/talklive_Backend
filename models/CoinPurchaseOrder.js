@@ -52,11 +52,8 @@ module.exports = (sequelize, DataTypes) => {
     currency: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: "BTC",
-      validate: {
-        isIn: [["BTC", "ETH", "USDT", "USD"]],
-      },
-      comment: "Cryptocurrency or fiat currency (BTC, ETH, USDT, USD)",
+      defaultValue: "USD",
+      comment: "Cryptocurrency or fiat currency",
     },
     pay_currency: {
       type: DataTypes.STRING,
@@ -68,22 +65,22 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       comment: "Amount in the pay_currency",
     },
-   status: {
-  type: DataTypes.STRING, // ✅ CHANGE THIS
-  allowNull: false,
-  defaultValue: "PENDING",
-  validate: {
-    isIn: [[
-      "PENDING",
-      "CONFIRMING",
-      "CONFIRMED",
-      "SENDING",
-      "FINISHED",
-      "FAILED",
-      "CANCELLED"
-    ]]
-  }
-},
+    status: {
+      type: DataTypes.STRING, // ✅ CHANGE THIS
+      allowNull: false,
+      defaultValue: "PENDING",
+      validate: {
+        isIn: [[
+          "PENDING",
+          "CONFIRMING",
+          "CONFIRMED",
+          "SENDING",
+          "FINISHED",
+          "FAILED",
+          "CANCELLED"
+        ]]
+      }
+    },
     confirmation_count: {
       type: DataTypes.INTEGER,
       allowNull: false,
