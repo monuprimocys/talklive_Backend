@@ -12,7 +12,6 @@ const { createBattle, getBattle, updateBattle, deleteBattle } = require("../../s
 const { createBattleHost, getBattle_host, updateBattleHost } = require("../../service/repository/Battle_host.service");
 
 async function start_battle(socket, data, emitEvent, joinRoom) {
-
     const isUser = await getUser({ user_id: socket.authData.user_id });
 
     if (!isUser) {
@@ -151,7 +150,7 @@ async function challenge_user_for_battle(socket, data, emitEvent, joinRoom, emit
         return next(new Error("User not found."));
     }
 
-    if (!data.socket_room_id && !data.user_id ) {
+    if (!data.socket_room_id && !data.user_id) {
         return emitEvent(socket.id, "challenge_user_for_battle", "Data is missing");
     }
 
@@ -176,14 +175,14 @@ async function challenge_user_for_battle(socket, data, emitEvent, joinRoom, emit
     // );
     const live_host = await getBattle_host({ battle_id: already_battle.Records[0].battle_id, is_main_challenger: true, is_live: true })
     const main_streamer = await getUser({ user_id: live_host.Records[0].user_id })
-    
-    if (live_host?.Records?.length<1) {
+
+    if (live_host?.Records?.length < 1) {
         return emitEvent(socket.id, "challenge_user_for_battle", {
             is_user: false
         })
     }
     // for 
-    
+
     // Have to create the new host with status and on joining have to update the status and have to consider that status while listing the hosts and battle it self
 
     const create_new_battle_host = await createBattleHost(
@@ -192,7 +191,7 @@ async function challenge_user_for_battle(socket, data, emitEvent, joinRoom, emit
             peer_id: "",
             battle_id: live_host.Records[0].battle_id,
             is_main_challenger: false,
-            status:"requested"
+            status: "requested"
         }
     )
 
@@ -240,7 +239,7 @@ async function join_as_challenged_user(socket, data, emitEvent, joinRoom, emitTo
             return next(new Error("User not found."));
         }
 
-        if (!data.battle_id  && !data.peer_id && !data.new_host_peer_id) {
+        if (!data.battle_id && !data.peer_id && !data.new_host_peer_id) {
             return emitEvent(socket.id, "join_as_challenged_user", "Data is missing");
         }
 
@@ -251,7 +250,7 @@ async function join_as_challenged_user(socket, data, emitEvent, joinRoom, emitTo
                 is_live: false,
             });
         }
-        
+
         const connect_new_host = await updateBattleHost(
             {
 
@@ -267,7 +266,7 @@ async function join_as_challenged_user(socket, data, emitEvent, joinRoom, emitTo
         if (
             connect_new_host
         ) {
-  
+
             joinRoom(socket, already_live?.Records[0].socket_room_id);
             emitToRoom(data.socket_room_id, "activity_on_live", {
                 message: "New Host Joined",

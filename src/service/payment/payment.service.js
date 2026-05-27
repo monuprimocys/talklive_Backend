@@ -48,7 +48,7 @@ class PaymentService {
       }
 
       let finalCoins = coins;
-      let finalAmountUsd = amountUsd;
+      let finalAmount = amountUsd;
       let finalCurrency = currency;
 
       // If planId is provided, fetch plan details
@@ -63,9 +63,9 @@ class PaymentService {
           };
         }
         finalCoins = plan.coins;
-        finalAmountUsd = plan.corresponding_money;
-        // Use provided currency if available, otherwise use plan currency
-        finalCurrency = currency || plan.currency || "BTC";
+        finalAmount = Number(plan.corresponding_money);
+        // Use provided currency if available, otherwise use plan currency, default to USD
+        finalCurrency = currency || plan.currency || "USD";
       }
 
       // Validate inputs
@@ -78,24 +78,17 @@ class PaymentService {
         };
       }
 
-      if (finalAmountUsd < 0.01) {
+      if (finalAmount < 0.01) {
         await transaction.rollback();
         return {
           success: false,
-          message: "Amount must be at least $0.01",
+          message: "Amount must be at least 0.01",
           error_code: "INVALID_AMOUNT",
         };
       }
 
-      const validCurrencies = ["BTC", "ETH", "USDT", "USD"];
-      if (!validCurrencies.includes(finalCurrency.toUpperCase())) {
-        await transaction.rollback();
-        return {
-          success: false,
-          message: `Currency must be one of: ${validCurrencies.join(", ")}`,
-          error_code: "INVALID_CURRENCY",
-        };
-      }
+      // Currency will be validated by NOWPayments API
+      const finalCurrencyUpper = finalCurrency.toUpperCase();
 
       // Generate order ID
       const orderId = `ORD-${userId}-${Date.now()}-${Math.random()
@@ -104,9 +97,9 @@ class PaymentService {
 
       // Create payment with NOWPayments API
       const nowPaymentPayload = {
-        price_amount: finalAmountUsd,
-        price_currency: "usd",
-        pay_currency: finalCurrency.toLowerCase(),
+        price_amount: finalAmount,
+        price_currency: finalCurrency.toLowerCase(), // ✅ Use dynamic currency from plan (e.g., inr, usd)
+        // Removing pay_currency allows the user to select any crypto currency on the invoice page
         order_id: orderId,
         order_description: `Purchase ${finalCoins} coins`,
         ipn_callback_url: `${this.baseUrl}/api/payment/webhook`,
@@ -116,7 +109,7 @@ class PaymentService {
 
       console.log("[PaymentService] Creating NOWPayments request:", {
         order_id: orderId,
-        price_amount: finalAmountUsd,
+        price_amount: finalAmount,
         currency: finalCurrency,
         plan_id: planId
       });
@@ -146,7 +139,7 @@ class PaymentService {
           order_id: orderId,
           payment_id: paymentData.id || paymentData.payment_id || null,
           coins: finalCoins,
-          amount_usd: finalAmountUsd,
+          amount_usd: finalAmount,
           currency: finalCurrency,
           pay_currency: paymentData.pay_currency || finalCurrency.toLowerCase(),
           pay_amount: paymentData.pay_amount || null,
@@ -176,21 +169,23 @@ class PaymentService {
         },
       };
     } catch (error) {
-      await transaction.rollback();
+      if (transaction) await transaction.rollback();
+
       console.error("[PaymentService] Payment creation error:", error.message);
 
       if (error.response?.data) {
-        console.error("[PaymentService] NOWPayments error details:", error.response.data);
+        console.error("[PaymentService] NOWPayments error details:", JSON.stringify(error.response.data, null, 2));
         return {
           success: false,
           message: error.response.data.message || "Payment creation failed",
-          error_code: "NOWPAYMENTS_ERROR",
+          error_code: "NOWPAYMENTS_API_ERROR",
+          details: error.response.data
         };
       }
 
       return {
         success: false,
-        message: "Failed to create payment",
+        message: error.message || "Failed to create payment",
         error_code: "PAYMENT_CREATION_ERROR",
       };
     }
@@ -455,6 +450,14 @@ class PaymentService {
         coins: order.coins,
         new_balance: balanceUpdate.new_balance,
       });
+
+      // ✅ Emit real-time balance update via socket
+      const socket_service = require("../common/socket.service");
+      if (user.socket_id) {
+        socket_service.emitEvent(user.socket_id, "balance_update", {
+          available_coins: balanceUpdate.new_balance,
+        });
+      }
 
       return {
         message: "Payment confirmed and coins added",
