@@ -153,6 +153,7 @@ async function getSocial(socialPayload, pagination = { page: 1, pageSize: 10 }, 
             offset,
             include: includeoption,
             order: order,
+            distinct: true, // ✅ Fix for incorrect count with includes
         };
 
         // Use findAndCountAll to get both rows and count
@@ -270,7 +271,8 @@ async function getFollowerSocials(user_id, pagination = { page: 1, pageSize: 10 
             ],
             limit,
             offset,
-            order
+            order,
+            distinct: true, // ✅ Fix for incorrect count with includes
         };
 
         const { rows, count } = await Social.findAndCountAll(query);

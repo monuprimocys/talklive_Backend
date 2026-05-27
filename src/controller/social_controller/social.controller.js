@@ -87,158 +87,158 @@ async function getPresignedUrl(req, res) {
 }
 
 async function uploadSocial(req, res) {
-  try {
-    const social_type = req.body.social_type;
-    const user_id = req.authData.user_id;
-
-    let post_media;
-    let media_location;
-
-    /* ---------- MEDIA PICK ---------- */
-    if (process.env.MEDIAFLOW === "S3") {        
-      if (!req.body.file_media_1) {
-        return generalResponse(res, {}, "File Data is missing", false, true, 404);
-      }
-      post_media = req.body.file_media_1;
-    } else {
-      post_media = req.files?.[0]?.path;
-    }
-
-    if (social_type === "reel") {
-      if (process.env.MEDIAFLOW === "S3") {
-        if (!req.body.file_media_2) {
-          return generalResponse(res, {}, "File Data is missing", false, true, 404);
-        }
-        media_location = req.body.file_media_2;
-      } else {
-        media_location = req.files?.[1]?.path;
-      }
-    }
-    /* ---------- FILTER DATA ---------- */
-    const allowedFields = [
-      "social_desc",
-      "social_type",
-      "location",
-      "taged",
-      "files",
-      "aspect_ratio",
-      "video_hight",
-      "music_id",
-    ];    
-    let filteredData;
     try {
-      filteredData = updateFieldsFilter(req.body, allowedFields);
-      filteredData.user_id = user_id;
+        const social_type = req.body.social_type;
+        const user_id = req.authData.user_id;
 
-      // Handle music_id - set to null if empty, 0, or invalid
-      if (!filteredData.music_id || filteredData.music_id === "0" || filteredData.music_id === 0) {
-        filteredData.music_id = null;
-      }
-    } catch (err) {
-      return generalResponse(res, {}, "Data is Missing", false, true);
-    }
-    const isUser = await getUser(filteredData);
-    if (!isUser) {
-      return generalResponse(res, {}, "Invalid User", false, true);
-    }
-    filteredData.country = isUser.country;
-    if (filteredData.social_desc) {
-      filteredData.hashtag = extractHashtags(filteredData.social_desc);
-    }
-    /* ---------- CREATE POST ---------- */
-    if (social_type === "post") {
-      const post = await createSocial(filteredData);
+        let post_media;
+        let media_location;
 
-      if (!post) {
-        return generalResponse(res, {}, "Failed to Upload post", false, true);
-      }
+        /* ---------- MEDIA PICK ---------- */
+        if (process.env.MEDIAFLOW === "S3") {
+            if (!req.body.file_media_1) {
+                return generalResponse(res, {}, "File Data is missing", false, true, 404);
+            }
+            post_media = req.body.file_media_1;
+        } else {
+            post_media = req.files?.[0]?.path;
+        }
 
-      await Promise.all(
-        req.files.map((file) =>
-          createMedia({
-            social_id: post.social_id,
-            media_location: file.path,
-          })
-        )
-      );
-      await updateUser({ total_socials: isUser.total_socials + 1 },{ user_id });
-      return generalResponse(res, {}, "Post Uploaded Successfully", true, true);
-    }
-
-    /* ---------- CREATE REEL ---------- */
-    if (social_type === "reel") {
-      filteredData.reel_thumbnail = post_media;
-
-      const reel = await createSocial(filteredData);
-      if (!reel) {
-        return generalResponse(res, {}, "Failed to Upload reel", false, true);
-      }
-
-      /* ---- SAVE ORIGINAL VIDEO ---- */
-      await createMedia({
-        social_id: reel.social_id,
-        media_location: media_location,
-        quality: "original",
-        is_original: true,
-      });
-
-      /* ---- GENERATE MULTIPLE QUALITIES (BACKGROUND) ---- */
-      // Run transcoding in background - don't await
-      const processVideoInBackground = async () => {
+        if (social_type === "reel") {
+            if (process.env.MEDIAFLOW === "S3") {
+                if (!req.body.file_media_2) {
+                    return generalResponse(res, {}, "File Data is missing", false, true, 404);
+                }
+                media_location = req.body.file_media_2;
+            } else {
+                media_location = req.files?.[1]?.path;
+            }
+        }
+        /* ---------- FILTER DATA ---------- */
+        const allowedFields = [
+            "social_desc",
+            "social_type",
+            "location",
+            "taged",
+            "files",
+            "aspect_ratio",
+            "video_hight",
+            "music_id",
+        ];
+        let filteredData;
         try {
-          let qualities;
-          if (process.env.MEDIAFLOW === "S3") {
-            qualities = await generateQualitiesS3(media_location, "reelboost/reels");
-          } else {
-            qualities = await generateQualities(media_location);
-          }
+            filteredData = updateFieldsFilter(req.body, allowedFields);
+            filteredData.user_id = user_id;
 
-          for (const q of qualities) {
-            await createMedia({
-              social_id: reel.social_id,
-              media_location: q.path,
-              quality: q.quality,
-              is_original: false,
-            });
-          }          
+            // Handle music_id - set to null if empty, 0, or invalid
+            if (!filteredData.music_id || filteredData.music_id === "0" || filteredData.music_id === 0) {
+                filteredData.music_id = null;
+            }
         } catch (err) {
-          console.error(`Video processing error for social_id ${reel.social_id}:`, err);
+            return generalResponse(res, {}, "Data is Missing", false, true);
         }
-      };
-
-      // Start background processing without waiting
-      processVideoInBackground();
-
-      /* ---- UPDATE USER ---- */
-      await updateUser(
-        { total_socials: isUser.total_socials + 1 },
-        { user_id }
-      );
-
-      /* ---- UPDATE MUSIC COUNT ---- */
-      if (reel.music_id) {
-        const get_music = await getMusic({ music_id: reel.music_id });
-        if (get_music?.Pagination?.total_records > 0) {
-          await updateMusic({
-            total_use: get_music.Records[0].total_use + 1,
-          });
+        const isUser = await getUser(filteredData);
+        if (!isUser) {
+            return generalResponse(res, {}, "Invalid User", false, true);
         }
-      }
+        filteredData.country = isUser.country;
+        if (filteredData.social_desc) {
+            filteredData.hashtag = extractHashtags(filteredData.social_desc);
+        }
+        /* ---------- CREATE POST ---------- */
+        if (social_type === "post") {
+            const post = await createSocial(filteredData);
 
-      return generalResponse(res, { social_id: reel.social_id }, "Reel Uploaded Successfully. Video processing in background.", true, true);
+            if (!post) {
+                return generalResponse(res, {}, "Failed to Upload post", false, true);
+            }
+
+            await Promise.all(
+                req.files.map((file) =>
+                    createMedia({
+                        social_id: post.social_id,
+                        media_location: file.path,
+                    })
+                )
+            );
+            await updateUser({ total_socials: isUser.total_socials + 1 }, { user_id });
+            return generalResponse(res, {}, "Post Uploaded Successfully", true, true);
+        }
+
+        /* ---------- CREATE REEL ---------- */
+        if (social_type === "reel") {
+            filteredData.reel_thumbnail = post_media;
+
+            const reel = await createSocial(filteredData);
+            if (!reel) {
+                return generalResponse(res, {}, "Failed to Upload reel", false, true);
+            }
+
+            /* ---- SAVE ORIGINAL VIDEO ---- */
+            await createMedia({
+                social_id: reel.social_id,
+                media_location: media_location,
+                quality: "original",
+                is_original: true,
+            });
+
+            /* ---- GENERATE MULTIPLE QUALITIES (BACKGROUND) ---- */
+            // Run transcoding in background - don't await
+            const processVideoInBackground = async () => {
+                try {
+                    let qualities;
+                    if (process.env.MEDIAFLOW === "S3") {
+                        qualities = await generateQualitiesS3(media_location, "reelboost/reels");
+                    } else {
+                        qualities = await generateQualities(media_location);
+                    }
+
+                    for (const q of qualities) {
+                        await createMedia({
+                            social_id: reel.social_id,
+                            media_location: q.path,
+                            quality: q.quality,
+                            is_original: false,
+                        });
+                    }
+                } catch (err) {
+                    console.error(`Video processing error for social_id ${reel.social_id}:`, err);
+                }
+            };
+
+            // Start background processing without waiting
+            processVideoInBackground();
+
+            /* ---- UPDATE USER ---- */
+            await updateUser(
+                { total_socials: isUser.total_socials + 1 },
+                { user_id }
+            );
+
+            /* ---- UPDATE MUSIC COUNT ---- */
+            if (reel.music_id) {
+                const get_music = await getMusic({ music_id: reel.music_id });
+                if (get_music?.Pagination?.total_records > 0) {
+                    await updateMusic({
+                        total_use: get_music.Records[0].total_use + 1,
+                    });
+                }
+            }
+
+            return generalResponse(res, { social_id: reel.social_id }, "Reel Uploaded Successfully. Video processing in background.", true, true);
+        }
+
+        return generalResponse(res, {}, "Invalid social type", false, true);
+    } catch (error) {
+        console.error("uploadSocial error:", error);
+        return generalResponse(
+            res,
+            {},
+            "Something went wrong while uploading social!",
+            false,
+            true
+        );
     }
-
-    return generalResponse(res, {}, "Invalid social type", false, true);
-  } catch (error) {
-    console.error("uploadSocial error:", error);
-    return generalResponse(
-      res,
-      {},
-      "Something went wrong while uploading social!",
-      false,
-      true
-    );
-  }
 }
 
 async function showSocials(req, res) {
@@ -805,7 +805,7 @@ async function deleteSocials(req, res) {
     try {
         const user_id = req.authData.user_id
         if (process.env.ISDEMO == "true") {
-            
+
             let demo_user_names = [
                 "williams654",
                 "james55",
@@ -876,19 +876,19 @@ async function deleteSocials(req, res) {
 
 
             // const deletedSocials = await deleteSocial(filteredData)
-            const updatedSocial = await updateSocial({ social_id: filteredData.social_id, user_id: user_id }, { deleted_by_user: true })
+            const deletedSocial = await deleteSocial({ social_id: filteredData.social_id, user_id: user_id })
             const deletedNotification = await deleteNotification({
                 social_id: filteredData.social_id
             })
             const updated_user = await updateUser({ total_socials: isUser.total_socials - 1 }, { user_id: user_id },)
 
-            if (updatedSocial) {
+            if (deletedSocial.deleted_count > 0) {
                 return generalResponse(
                     res,
                     {
-
+                        deleted_count: deletedSocial.deleted_count
                     },
-                    "Social delted Successfully",
+                    "Social deleted Successfully",
                     true,
                     true
                 );
@@ -960,7 +960,7 @@ async function editSocial(req, res) {
                 )
             }
         }
-        
+
         if (!req.body.social_id) {
             return generalResponse(
                 res,
