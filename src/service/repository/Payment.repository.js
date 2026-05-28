@@ -21,7 +21,7 @@ class PaymentRepository {
    */
   static async findByPaymentId(paymentId) {
     return await db.CoinPurchaseOrder.findOne({
-      where: { payment_id: paymentId },
+      where: { payment_id: String(paymentId) },
     });
   }
 
@@ -140,6 +140,10 @@ class PaymentRepository {
    * @returns {object} - Created log record
    */
   static async logWebhook(logData) {
+    // Ensure payment_id is always stored as a string to prevent type mismatches
+    if (logData.payment_id !== undefined && logData.payment_id !== null) {
+      logData.payment_id = String(logData.payment_id);
+    }
     return await db.PaymentWebhookLog.create(logData);
   }
 
@@ -151,10 +155,21 @@ class PaymentRepository {
   static async findDuplicateWebhook(paymentId) {
     return await db.PaymentWebhookLog.findOne({
       where: {
-        payment_id: paymentId,
+        payment_id: String(paymentId),
         status: ["PROCESSED", "DUPLICATE"],
       },
       order: [["created_at", "DESC"]],
+    });
+  }
+
+  /**
+   * Find payment order by order_id (for frontend polling)
+   * @param {string} orderId - Internal order ID (e.g. ORD-387-...)
+   * @returns {object} - Payment order or null
+   */
+  static async findByOrderIdWithUser(orderId) {
+    return await db.CoinPurchaseOrder.findOne({
+      where: { order_id: orderId },
     });
   }
 
