@@ -4,6 +4,7 @@ const updateFieldsFilter = require("../../../helper/updateField.helper");
 const { createGift, getGift, deleteGift, updateGift } = require("../../../service/repository/Gift.service");
 const { createGiftCategory, getGiftcategory, deleteGiftcategory, updateGiftcategory } = require("../../../service/repository/Gift_category.service");
 const { getUser } = require("../../../service/repository/user.service");
+const { uploadFileToS3 } = require("../../../service/common/s3.service");
 
 async function uploadGiftCategory(req, res) {
     try {
@@ -85,7 +86,7 @@ async function showGiftCategory(req, res) {
             );
         }
 
-        filteredData.admin_status=true
+        filteredData.admin_status = true
         if (user_id) {
             filteredData.status = true
         }
@@ -142,7 +143,7 @@ async function showGiftCategory(req, res) {
                 console.error('Error fetching gifts:', error);
             }
         }
-        
+
         return generalResponse(
             res,
             {
@@ -179,7 +180,7 @@ async function edit_Gift_Category(req, res) {
                 true
             );
         }
-        allowedUpdateFields = ['name', 'status','admin_status']
+        allowedUpdateFields = ['name', 'status', 'admin_status']
         let filteredData;
         try {
             filteredData = updateFieldsFilter(req.body, allowedUpdateFields);
@@ -235,24 +236,21 @@ async function uploadGift(req, res) {
             filteredData = updateFieldsFilter(req.body, allowedUpdateFieldsMandatory, true);
             filteredData.uploader_id = admin_id
             if (process.env.MEDIAFLOW == "S3") {
-                if (!req.body.file_media_1) {
-                    return generalResponse(
-                        res,
-                        {},
-                        "File Data is missing",
-                        false,
-                        true,
-                        404
-                    );
+                if (req.body.file_media_1) {
+                    filteredData.gift_thumbnail = req.body.file_media_1;
+                } else if (req.files && req.files.length > 0) {
+                    filteredData.gift_thumbnail = await uploadFileToS3(req.files[0], "reelboost/gifts");
+                } else {
+                    return generalResponse(res, {}, "File Data is missing", false, true, 404);
                 }
-                
-                // media_location = req.body.file_media_1
-                filteredData.gift_thumbnail = req.body.file_media_1
             }
             else {
-                filteredData.gift_thumbnail = req.files[0].path
-
-            }    
+                if (req.files && req.files.length > 0) {
+                    filteredData.gift_thumbnail = req.files[0].path;
+                } else {
+                    return generalResponse(res, {}, "File Data is missing", false, true, 404);
+                }
+            }
 
         }
         catch (err) {
@@ -334,7 +332,7 @@ async function showGift(req, res) {
                 res,
                 { success: false },
                 "Data is Missing",
-                false,  
+                false,
                 true
             );
         }
@@ -394,7 +392,7 @@ async function edit_Gift(req, res) {
 
         let allowedUpdateFields = [];
 
-        allowedUpdateFields = ['status', 'name', 'gift_value','gift_category_id']
+        allowedUpdateFields = ['status', 'name', 'gift_value', 'gift_category_id']
         let filteredData;
         try {
             filteredData = updateFieldsFilter(req.body, allowedUpdateFields, false);
@@ -409,7 +407,7 @@ async function edit_Gift(req, res) {
                 true
             );
         }
-        if(!req.body.gift_id){
+        if (!req.body.gift_id) {
             return generalResponse(
                 res,
                 { success: false },
@@ -419,19 +417,17 @@ async function edit_Gift(req, res) {
             );
         }
 
-   
+
         if (process.env.MEDIAFLOW == "S3") {
             if (req.body.file_media_1) {
-                filteredData.gift_thumbnail = req.body.file_media_1
-
+                filteredData.gift_thumbnail = req.body.file_media_1;
+            } else if (req.files && req.files.length > 0) {
+                filteredData.gift_thumbnail = await uploadFileToS3(req.files[0], "reelboost/gifts");
             }
-            
-            // media_location = req.body.file_media_1
         }
         else {
             if (req.files && req.files.length > 0) {
-
-                filteredData.gift_thumbnail = req.files[0].path
+                filteredData.gift_thumbnail = req.files[0].path;
             }
         }
         const updatedGift = await updateGift(
@@ -443,17 +439,17 @@ async function edit_Gift(req, res) {
                 model: Gift_category
             }
         ]
-        const newGift = await getGift({ gift_id: req.body.gift_id },{},[],includeOptions)
-            return generalResponse(
-                res,
-                newGift,
-                "Gift updated Successfully",
-                true,
-                true
-            );
-        
+        const newGift = await getGift({ gift_id: req.body.gift_id }, {}, [], includeOptions)
+        return generalResponse(
+            res,
+            newGift,
+            "Gift updated Successfully",
+            true,
+            true
+        );
 
-        
+
+
 
     } catch (error) {
         console.error("Error in Deleting Gift ", error);

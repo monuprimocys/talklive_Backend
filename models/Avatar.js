@@ -1,3 +1,5 @@
+const { formatMediaUrl } = require("../src/helper/url.helper");
+
 module.exports = (sequelize, DataTypes) => {
     const Avatar = sequelize.define("Avatar", {
         avatar_id: {
@@ -16,15 +18,10 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
             defaultValue: "",
             get() {
-                let rawUrl = this.getDataValue("avatar_media");
-                let fullUrl =
-                    // process.env.baseUrl + ":" + process.env.Port + "/" + rawUrl;
-                    process.env.baseUrl + "/" + rawUrl;
-                fullUrl == process.env.baseUrl ? "" : fullUrl;
-                return fullUrl;
+                return formatMediaUrl(this.getDataValue("avatar_media"));
             },
         },
-        avatar_gender:{
+        avatar_gender: {
             type: DataTypes.STRING,
             allowNull: false,
             defaultValue: "",

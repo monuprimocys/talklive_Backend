@@ -1,3 +1,5 @@
+const { formatMediaUrl } = require("../src/helper/url.helper");
+
 module.exports = (sequelize, DataTypes) => {
     const Media = sequelize.define("Media", {
         media_id: {
@@ -15,37 +17,14 @@ module.exports = (sequelize, DataTypes) => {
             },
         },
 
-       media_location: {
-  type: DataTypes.STRING,
-  allowNull: false,
-  defaultValue: "",
-  get() {
-    const rawUrl = this.getDataValue("media_location");
-
-    // ✅ empty check
-    if (!rawUrl) return "";
-
-    // ✅ already full URL (S3 / CloudFront / R2 / any CDN)
-    if (
-      rawUrl.includes("amazonaws.com") ||
-      rawUrl.includes("cloudfront.net") ||
-      rawUrl.includes("r2.cloudflarestorage.com") ||
-      rawUrl.startsWith("http://") ||
-      rawUrl.startsWith("https://")
-    ) {
-      return rawUrl;
-    }
-
-    // ✅ clean base URL (remove trailing /)
-    const baseUrl = (process.env.baseUrl || "").replace(/\/$/, "");
-
-    // ✅ clean path (remove starting /)
-    const path = rawUrl.replace(/^\//, "");
-
-    // ✅ final URL
-    return `${baseUrl}/${path}`;
-  },
-},
+        media_location: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            defaultValue: "",
+            get() {
+                return formatMediaUrl(this.getDataValue("media_location"));
+            },
+        },
         quality: {
             type: DataTypes.STRING, // 360p | 480p | 720p | original
             allowNull: false,

@@ -1,3 +1,5 @@
+const { formatMediaUrl } = require("../src/helper/url.helper");
+
 module.exports = (sequelize, DataTypes) => {
   const FeedMedia = sequelize.define("FeedMedia", {
     feed_media_id: {
@@ -11,41 +13,23 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       comment: 'URL path to the media file (image or video)',
       get() {
-        let rawUrl = this.getDataValue("media_url");
-        if (!rawUrl || rawUrl === "") {
-          return "";
-        }
-        // Handle external CDN URLs
-        if (rawUrl?.includes("amazonaws.com") || rawUrl?.includes("cloudfront.net")) {
-          return rawUrl;
-        }
-        // Construct full URL for local storage
-        let fullUrl = process.env.baseUrl + "/" + rawUrl;
-        return fullUrl === process.env.baseUrl + "/" ? "" : fullUrl;
+        return formatMediaUrl(this.getDataValue("media_url"));
       },
     },
- media_type: {
-  type: DataTypes.STRING,
-  allowNull: false,
-  defaultValue: 'image',
-  validate: {
-    isIn: [['image', 'video']]
-  }
-},
+    media_type: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'image',
+      validate: {
+        isIn: [['image', 'video']]
+      }
+    },
     thumbnail_url: {
       type: DataTypes.STRING,
       allowNull: true,
       comment: 'Thumbnail URL for video media',
       get() {
-        let rawUrl = this.getDataValue("thumbnail_url");
-        if (!rawUrl || rawUrl === "") {
-          return "";
-        }
-        if (rawUrl?.includes("amazonaws.com") || rawUrl?.includes("cloudfront.net")) {
-          return rawUrl;
-        }
-        let fullUrl = process.env.baseUrl + "/" + rawUrl;
-        return fullUrl === process.env.baseUrl + "/" ? "" : fullUrl;
+        return formatMediaUrl(this.getDataValue("thumbnail_url"));
       },
     },
     duration: {

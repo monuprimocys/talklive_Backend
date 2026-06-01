@@ -252,18 +252,31 @@ async function createFeedPost(req, res) {
 
       /* ---------- S3 MODE ---------- */
       if (process.env.MEDIAFLOW === "S3") {
-
-        const mediaPayload = {
-          feed_id: feed.feed_id,
-          media_url: req.body.file_media_1,
-          media_type:
-            ['image_only', 'text_image'].includes(filteredData.feed_type)
-              ? 'image'
-              : 'video',
-          order: 0
-        };
-
-        await addFeedMedia(mediaPayload);
+        const mediaPromises = [];
+        let i = 1;
+        while (req.body[`file_media_${i}`]) {
+          const mediaUrl = req.body[`file_media_${i}`];
+          const mediaPayload = {
+            feed_id: feed.feed_id,
+            media_url: mediaUrl,
+            media_type:
+              ['image_only', 'text_image'].includes(filteredData.feed_type)
+                ? 'image'
+                : 'video',
+            order: i - 1
+          };
+          mediaPromises.push(addFeedMedia(mediaPayload));
+          i++;
+        }
+        if (i === 1 && req.body.file_media_1) {
+          mediaPromises.push(addFeedMedia({
+            feed_id: feed.feed_id,
+            media_url: req.body.file_media_1,
+            media_type: ['image_only', 'text_image'].includes(filteredData.feed_type) ? 'image' : 'video',
+            order: 0
+          }));
+        }
+        await Promise.all(mediaPromises);
       }
 
       /* ---------- LOCAL MODE ---------- */

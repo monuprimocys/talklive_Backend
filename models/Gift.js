@@ -1,3 +1,5 @@
+const { formatMediaUrl } = require("../src/helper/url.helper");
+
 module.exports = (sequelize, DataTypes) => {
     const Gift = sequelize.define("Gift", {
         gift_id: {
@@ -16,15 +18,7 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
             defaultValue: "",
             get() {
-                let rawUrl = this.getDataValue("gift_thumbnail");
-                if (rawUrl?.includes("amazonaws.com") || rawUrl?.includes("cloudfront.net") ) {
-                    return rawUrl
-                }
-                let fullUrl =
-                    // process.env.baseUrl + ":" + process.env.Port + "/" + rawUrl;
-                    process.env.baseUrl + "/" + rawUrl;
-                fullUrl == process.env.baseUrl ? "" : fullUrl;
-                return fullUrl;
+                return formatMediaUrl(this.getDataValue("gift_thumbnail"));
             },
         },
         gift_value: {

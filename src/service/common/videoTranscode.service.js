@@ -9,11 +9,13 @@ const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 const client = new S3Client({
-  region: process.env.S3_REGION,
+  region: "auto",
+  endpoint: process.env.AWS_ENDPOINT,
   credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY_ID,
-    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
+  forcePathStyle: true
 });
 
 const QUALITIES = [
@@ -43,7 +45,7 @@ const downloadFromUrl = (url, destPath) => {
         resolve(destPath);
       });
     }).on("error", (err) => {
-      fs.unlink(destPath, () => {});
+      fs.unlink(destPath, () => { });
       reject(err);
     });
   });
@@ -52,10 +54,10 @@ const downloadFromUrl = (url, destPath) => {
 // Upload local file to S3
 const uploadLocalFileToS3 = async (localPath, folderPath, fileName) => {
   const fileContent = fs.readFileSync(localPath);
-  const key = `${folderPath}/${fileName}`;
+  const key = `${folderPath}/${fileName}`.replace(/\/+/g, '/');
 
   const params = {
-    Bucket: process.env.S3_BUCKET_NAME,
+    Bucket: process.env.AWS_BUCKET,
     Key: key,
     Body: fileContent,
     ContentType: "video/mp4",
@@ -68,7 +70,7 @@ const uploadLocalFileToS3 = async (localPath, folderPath, fileName) => {
   // Delete local file after upload
   fs.unlinkSync(localPath);
 
-  return `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.S3_REGION}.amazonaws.com/${key}`;
+  return `${process.env.AWS_ITEM_BASE_URL}${key}`.replace(/([^:]\/)\/+/g, "$1");
 };
 
 // Generate qualities for LOCAL storage (original function)

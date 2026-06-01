@@ -1,3 +1,5 @@
+const { formatMediaUrl } = require("../src/helper/url.helper");
+
 module.exports = (sequelize, DataTypes) => {
   const User = sequelize.define("User", {
     user_id: {
@@ -111,38 +113,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: "",
       get() {
-        const rawUrl = this.getDataValue("profile_pic");
-
-        // ✅ If empty → return default profile image
-        if (!rawUrl) {
-          return `${process.env.baseUrl}/uploads/not-found-images/profile-image.png`;
-        }
-
-        // ✅ If already full URL (S3 / CloudFront / R2 / external)
-        if (
-          rawUrl.includes("amazonaws.com") ||
-          rawUrl.includes("cloudfront.net") ||
-          rawUrl.includes("r2.cloudflarestorage.com") ||
-          rawUrl.startsWith("http://") ||
-          rawUrl.startsWith("https://")
-        ) {
-          return rawUrl;
-        }
-
-        // ✅ Clean base URL (remove trailing /)
-        const baseUrl = (process.env.baseUrl || "").replace(/\/$/, "");
-
-        // ✅ Clean path (remove starting /)
-        const path = rawUrl.replace(/^\//, "");
-
-        const fullUrl = `${baseUrl}/${path}`;
-
-        // ✅ Final safety fallback
-        if (!path) {
-          return `${baseUrl}/uploads/not-found-images/profile-image.png`;
-        }
-
-        return fullUrl;
+        return formatMediaUrl(this.getDataValue("profile_pic"), "uploads/not-found-images/profile-image.png");
       },
     },
     id_proof: {
@@ -150,9 +121,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: "",
       get() {
-        const raw_urls = this.getDataValue("id_proof");
-        const imageUrls = `${process.env.baseUrl}${raw_urls}`;
-        return imageUrls != process.env.baseUrl ? imageUrls : ``;
+        return formatMediaUrl(this.getDataValue("id_proof"));
       },
     },
     selfie: {
@@ -160,9 +129,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: "",
       get() {
-        const raw_urls = this.getDataValue("selfie");
-        const imageUrls = `${process.env.baseUrl}${raw_urls}`;
-        return imageUrls != process.env.baseUrl ? imageUrls : ``;
+        return formatMediaUrl(this.getDataValue("selfie"));
       },
     },
     dob: {
@@ -298,7 +265,7 @@ module.exports = (sequelize, DataTypes) => {
     },
 
 
-     // Paid Communication Pricing
+    // Paid Communication Pricing
     message_price: {
       type: DataTypes.INTEGER,
       allowNull: false,
@@ -322,8 +289,9 @@ module.exports = (sequelize, DataTypes) => {
       validate: {
         min: 0,
       }
-    }}
-);
+    }
+  }
+  );
   User.associate = function (models) {
     User.hasMany(models.Social, {
       foreignKey: "user_id",

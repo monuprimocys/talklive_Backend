@@ -1,3 +1,5 @@
+const { formatMediaUrl } = require("../src/helper/url.helper");
+
 module.exports = (sequelize, DataTypes) => {
   const Message = sequelize.define("Message", {
     message_id: {
@@ -10,102 +12,38 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false,
     },
- message_content: {
-  type: DataTypes.TEXT,
-  allowNull: false,
- get() {
-  const message_type = this.getDataValue("message_type");
-  const rawValue = this.getDataValue("message_content");
-  const isDeleted = this.getDataValue("deleted_for_everyone");
+    message_content: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      get() {
+        const message_type = this.getDataValue("message_type");
+        const rawValue = this.getDataValue("message_content");
+        const isDeleted = this.getDataValue("deleted_for_everyone");
 
-  // ✅ अगर message delete for everyone है
-  if (isDeleted) {
-    return "This message was deleted.";
-  }
+        if (isDeleted) return "This message was deleted.";
+        if (rawValue === "This message was deleted.") return rawValue;
 
-  // ✅ अगर already deleted text store है
-  if (rawValue === "This message was deleted.") {
-    return rawValue;
-  }
-
-  // ✅ Only process media types
-  if (["image", "video", "gif", "doc"].includes(message_type)) {
-
-    if (!rawValue) {
-      return `${process.env.baseUrl}/uploads/not-found-images/group-image.png`;
-    }
-
-    // ✅ अगर already full URL है
-    if (
-      rawValue.includes("amazonaws.com") ||
-      rawValue.includes("cloudfront.net") ||
-      rawValue.includes("r2.cloudflarestorage.com") ||
-      rawValue.startsWith("http://") ||
-      rawValue.startsWith("https://")
-    ) {
-      return rawValue;
-    }
-
-    const baseUrl = (process.env.baseUrl || "").replace(/\/$/, "");
-    const path = rawValue.replace(/^\//, "");
-
-    if (!path) {
-      return `${baseUrl}/uploads/not-found-images/group-image.png`;
-    }
-
-    return `${baseUrl}/${path}`;
-  }
-
-  // ✅ text messages normal return
-  return rawValue;
-}
-},
-
-message_thumbnail: {
-  type: DataTypes.TEXT,
-  defaultValue: "",
-  allowNull: false,
-  get() {
-    const message_type = this.getDataValue("message_type");
-    const rawValue = this.getDataValue("message_thumbnail");
-
-    // ✅ Only apply for video thumbnails
-    if (message_type === "video") {
-
-      // ✅ If empty → return default thumbnail
-      if (!rawValue) {
-        return `${process.env.baseUrl}/uploads/not-found-images/group-image.png`;
-      }
-
-      // ✅ If already full URL (S3 / CloudFront / R2 / external)
-      if (
-        rawValue.includes("amazonaws.com") ||
-        rawValue.includes("cloudfront.net") ||
-        rawValue.includes("r2.cloudflarestorage.com") ||
-        rawValue.startsWith("http://") ||
-        rawValue.startsWith("https://")
-      ) {
+        if (["image", "video", "gif", "doc"].includes(message_type)) {
+          return formatMediaUrl(rawValue, "uploads/not-found-images/group-image.png");
+        }
         return rawValue;
       }
+    },
 
-      // ✅ Clean base URL
-      const baseUrl = (process.env.baseUrl || "").replace(/\/$/, "");
+    message_thumbnail: {
+      type: DataTypes.TEXT,
+      defaultValue: "",
+      allowNull: false,
+      get() {
+        const message_type = this.getDataValue("message_type");
+        const rawValue = this.getDataValue("message_thumbnail");
 
-      // ✅ Clean path
-      const path = rawValue.replace(/^\//, "");
-
-      // ✅ Final safety fallback
-      if (!path) {
-        return `${baseUrl}/uploads/not-found-images/group-image.png`;
-      }
-
-      return `${baseUrl}/${path}`;
-    }
-
-    // ✅ For non-video → return raw (or empty string)
-    return rawValue;
-  },
-},
+        if (message_type === "video") {
+          return formatMediaUrl(rawValue, "uploads/not-found-images/group-image.png");
+        }
+        return rawValue;
+      },
+    },
     message_length: {
       type: DataTypes.TEXT,
       allowNull: false,
@@ -153,13 +91,13 @@ message_thumbnail: {
       allowNull: true,
       defaultValue: false,
     },
-   
-    unsend_status:{
-      type:DataTypes.BOOLEAN,
-      allowNull:true,
-      defaultValue:false,
+
+    unsend_status: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
     },
-    
+
 
   });
 
@@ -185,9 +123,9 @@ message_thumbnail: {
       onDelete: "CASCADE",
     });
     Message.belongsTo(models.Call, {
-  foreignKey: "call_id",
-  onDelete: "CASCADE",
-});
+      foreignKey: "call_id",
+      onDelete: "CASCADE",
+    });
     Message.belongsTo(models.Social, {
       foreignKey: "social_id",
       allowNull: true,

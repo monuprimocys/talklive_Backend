@@ -66,10 +66,18 @@ async function updateProfile(req, res) {
     }
     if (pictureType != undefined && pictureType != "") {
       if (pictureType == "id_proof") {
-        filteredData.id_proof = req.files[0].path;
+        if (process.env.MEDIAFLOW == "S3") {
+          if (req.body.file_media_1) filteredData.id_proof = req.body.file_media_1;
+        } else {
+          filteredData.id_proof = req.files[0].path;
+        }
       }
       if (pictureType == "selfie") {
-        filteredData.selfie = req.files[0].path;
+        if (process.env.MEDIAFLOW == "S3") {
+          if (req.body.file_media_1) filteredData.selfie = req.body.file_media_1;
+        } else {
+          filteredData.selfie = req.files[0].path;
+        }
       }
       if (pictureType == "profile_pic") {
         if (process.env.MEDIAFLOW == "S3") {

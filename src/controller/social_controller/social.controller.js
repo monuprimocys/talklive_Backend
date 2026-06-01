@@ -153,14 +153,35 @@ async function uploadSocial(req, res) {
                 return generalResponse(res, {}, "Failed to Upload post", false, true);
             }
 
-            await Promise.all(
-                req.files.map((file) =>
-                    createMedia({
+            /* ---------- HANDLE MEDIA ---------- */
+            if (process.env.MEDIAFLOW === "S3") {
+                const mediaPromises = [];
+                let i = 1;
+                while (req.body[`file_media_${i}`]) {
+                    mediaPromises.push(createMedia({
                         social_id: post.social_id,
-                        media_location: file.path,
-                    })
-                )
-            );
+                        media_location: req.body[`file_media_${i}`],
+                    }));
+                    i++;
+                }
+                // Fallback
+                if (i === 1 && req.body.file_media_1) {
+                    mediaPromises.push(createMedia({
+                        social_id: post.social_id,
+                        media_location: req.body.file_media_1,
+                    }));
+                }
+                await Promise.all(mediaPromises);
+            } else {
+                await Promise.all(
+                    req.files.map((file) =>
+                        createMedia({
+                            social_id: post.social_id,
+                            media_location: file.path,
+                        })
+                    )
+                );
+            }
             await updateUser({ total_socials: isUser.total_socials + 1 }, { user_id });
             return generalResponse(res, {}, "Post Uploaded Successfully", true, true);
         }

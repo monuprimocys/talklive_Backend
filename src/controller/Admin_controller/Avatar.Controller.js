@@ -7,6 +7,7 @@ const {
     deleteAvatar,
     getAvatarCount
 } = require("../../service/repository/Avatar.service");
+const { uploadFileToS3 } = require("../../service/common/s3.service");
 
 // Create Avatar
 async function uploadAvatar(req, res) {
@@ -19,12 +20,21 @@ async function uploadAvatar(req, res) {
             return generalResponse(res, { success: false }, "Data is Missing", false, true);
         }
 
-        if (req.files?.length == 0) {
-            return generalResponse(res, { success: false }, "file is required", false, true);
-        }
-        // If file upload is used for avatar_media
-        if (req.files && req.files[0].path) {
-            filteredData.avatar_media = req.files[0].path;
+        if (process.env.MEDIAFLOW === "S3") {
+            if (req.body.file_media_1) {
+                filteredData.avatar_media = req.body.file_media_1;
+            } else if (req.files && req.files.length > 0) {
+                filteredData.avatar_media = await uploadFileToS3(req.files[0], "reelboost/avatars");
+            } else {
+                return generalResponse(res, { success: false }, "file is required", false, true);
+            }
+        } else {
+            if (req.files?.length == 0) {
+                return generalResponse(res, { success: false }, "file is required", false, true);
+            }
+            if (req.files && req.files[0].path) {
+                filteredData.avatar_media = req.files[0].path;
+            }
         }
         const avatar = await createAvatar(filteredData);
         return generalResponse(res, avatar, "Avatar Created Successfully", true, false);
@@ -69,9 +79,16 @@ async function updateAvatars(req, res) {
         if (!req.body.avatar_id) {
             return generalResponse(res, { success: false }, "avatar_id is required", false, true);
         }
-        // If file upload is used for avatar_media
-        if (req.files.length > 0 && req.files[0].path) {
-            filteredData.avatar_media = req.files[0].path;
+        if (process.env.MEDIAFLOW === "S3") {
+            if (req.body.file_media_1) {
+                filteredData.avatar_media = req.body.file_media_1;
+            } else if (req.files && req.files.length > 0) {
+                filteredData.avatar_media = await uploadFileToS3(req.files[0], "reelboost/avatars");
+            }
+        } else {
+            if (req.files && req.files.length > 0 && req.files[0].path) {
+                filteredData.avatar_media = req.files[0].path;
+            }
         }
         const updateData = { ...filteredData };
         delete updateData.avatar_id;

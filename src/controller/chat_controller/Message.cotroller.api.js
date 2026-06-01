@@ -18,9 +18,16 @@ const { sendPushNotification } = require("../../service/common/onesignal.service
 
 // Paid communication services
 const BalanceValidator = require("../../service/payment/balance-validator.service");
+const { uploadFileToS3 } = require("../../service/common/s3.service");
 const CoinsService = require("../../service/payment/coins.service");
 
 async function sendMessage(req, res) {
+  const getFile = (fieldname, index) => {
+    if (!req.files) return null;
+    const file = req.files.find(f => f.fieldname === fieldname);
+    return file || req.files[index];
+  };
+
   try {
     const user_id = req.authData.user_id;
     const glob_user = await getUser({ user_id: user_id });
@@ -65,82 +72,60 @@ async function sendMessage(req, res) {
 
       if (filteredDataPayload.message_type === "image" && !req.body.is_forwarded) {
         if (process.env.MEDIAFLOW == "S3") {
-          if (!req.body.file_media_1) {
-            return generalResponse(
-              res,
-              { success: false },
-              "file_media_1 is required",
-              false,
-              true
-            )
+          if (req.files && req.files.length > 0) {
+            // Backend handles S3 upload
+            filteredDataPayload.message_content = await uploadFileToS3(getFile("file_media_1", 0), "chat/images");
+          } else if (req.body.file_media_1) {
+            // Frontend already uploaded to S3
+            filteredDataPayload.message_content = req.body.file_media_1;
+          } else {
+            return generalResponse(res, { success: false }, "Image file or URL is required", false, true);
           }
-          filteredDataPayload.message_content = req.body.file_media_1;
-
-        }
-        else {
-
+        } else {
           filteredDataPayload.message_content = req.files[0].path;
         }
       }
       if (filteredDataPayload.message_type === "video" && !req.body.is_forwarded) {
         if (process.env.MEDIAFLOW == "S3") {
-          if (!req.body.file_media_1 || !req.body.file_media_2) {
-            return generalResponse(
-              res,
-              { success: false },
-              "file_media_1 and file_media_2 are required",
-              false,
-              true
-            )
+          if (req.files && req.files.length >= 2) {
+            // Backend handles S3 upload for both thumbnail and video
+            filteredDataPayload.message_thumbnail = await uploadFileToS3(getFile("file_media_1", 0), "chat/thumbnails");
+            filteredDataPayload.message_content = await uploadFileToS3(getFile("file_media_2", 1), "chat/videos");
+          } else if (req.body.file_media_1 && req.body.file_media_2) {
+            // Frontend already uploaded to S3
+            filteredDataPayload.message_thumbnail = req.body.file_media_1;
+            filteredDataPayload.message_content = req.body.file_media_2;
+          } else {
+            return generalResponse(res, { success: false }, "Video and thumbnail files or URLs are required", false, true);
           }
-
-
-          filteredDataPayload.message_thumbnail = req.body.file_media_1;
-          filteredDataPayload.message_content = req.body.file_media_2;
-        }
-        else {
-
+        } else {
           filteredDataPayload.message_thumbnail = req.files[0].path;
           filteredDataPayload.message_content = req.files[1].path;
         }
-
-
       }
       if (filteredDataPayload.message_type === "gif" && !req.body.is_forwarded) {
         if (process.env.MEDIAFLOW == "S3") {
-          if (!req.body.file_media_1) {
-            return generalResponse(
-              res,
-              { success: false },
-              "file_media_1 is required",
-              false,
-              true
-            )
+          if (req.files && req.files.length > 0) {
+            filteredDataPayload.message_content = await uploadFileToS3(getFile("file_media_1", 0), "chat/gifs");
+          } else if (req.body.file_media_1) {
+            filteredDataPayload.message_content = req.body.file_media_1;
+          } else {
+            return generalResponse(res, { success: false }, "GIF file or URL is required", false, true);
           }
-          filteredDataPayload.message_content = req.body.file_media_1;
-
-        }
-        else {
-
+        } else {
           filteredDataPayload.message_content = req.files[0].path;
         }
       }
       if (filteredDataPayload.message_type === "doc" && !req.body.is_forwarded) {
         if (process.env.MEDIAFLOW == "S3") {
-          if (!req.body.file_media_1) {
-            return generalResponse(
-              res,
-              { success: false },
-              "file_media_1 is required",
-              false,
-              true
-            )
+          if (req.files && req.files.length > 0) {
+            filteredDataPayload.message_content = await uploadFileToS3(getFile("file_media_1", 0), "chat/documents");
+          } else if (req.body.file_media_1) {
+            filteredDataPayload.message_content = req.body.file_media_1;
+          } else {
+            return generalResponse(res, { success: false }, "Document file or URL is required", false, true);
           }
-          filteredDataPayload.message_content = req.body.file_media_1;
-
-        }
-        else {
-
+        } else {
           filteredDataPayload.message_content = req.files[0].path;
         }
       }

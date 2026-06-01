@@ -1,126 +1,3 @@
-// const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
-// const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
-// const fs = require("fs");
-
-// // ✅ R2 CONFIG
-// const client = new S3Client({
-//     region: "auto",
-//     endpoint: process.env.AWS_ENDPOINT,
-//     credentials: {
-//         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-//         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-//     },
-//     forcePathStyle: true
-// });
-
-// // ✅ FIXED BASE PATH
-// const BASE_PATH = "TokLive/uploads_v2";
-
-// // ✅ Generate presigned URL (Frontend upload)
-// async function getPresignedUploadUrl(fileType = "video", mimeType = "video/mp4") {
-//     try {
-//         const timestamp = Date.now();
-//         let ext = "mp4";
-
-//         // detect extension
-//         if (mimeType.includes("jpeg") || mimeType.includes("jpg")) ext = "jpg";
-//         else if (mimeType.includes("png")) ext = "png";
-//         else if (mimeType.includes("webp")) ext = "webp";
-//         else if (mimeType.includes("webm")) ext = "webm";
-//         else if (mimeType.includes("mov") || mimeType.includes("quicktime")) ext = "mov";
-
-//         // file naming
-//         let fileName;
-//         if (fileType === "thumb" || mimeType.startsWith("image/")) {
-//             fileName = `thumb_${timestamp}.${ext}`;
-//         } else if (fileType === "video" || mimeType.startsWith("video/")) {
-//             fileName = `video_${timestamp}.${ext}`;
-//         } else {
-//             fileName = `file_${timestamp}.${ext}`;
-//         }
-
-//         // ✅ FINAL KEY PATH
-//         const key = `${BASE_PATH}/${fileName}`;
-
-//         const params = {
-//             Bucket: process.env.AWS_BUCKET,
-//             Key: key,
-//             ContentType: mimeType,
-//         };
-
-//         const command = new PutObjectCommand(params);
-
-//         const presignedUrl = await getSignedUrl(client, command, {
-//             expiresIn: 3600
-//         });
-
-//         // ✅ CDN URL
-//         const fileUrl = `${process.env.AWS_ITEM_BASE_URL}${key}`;
-
-//         return {
-//             presignedUrl,
-//             fileUrl,
-//             key,
-//             fileName
-//         };
-
-//     } catch (error) {
-//         console.error("Error generating presigned URL:", error);
-//         throw error;
-//     }
-// }
-
-// // ✅ Direct upload (multer)
-// async function uploadFileToS3(file, fileType = "file") {
-//     try {
-//         const timestamp = Date.now();
-//         const ext = file.originalname.split('.').pop();
-
-//         let fileName;
-//         if (fileType === "thumb" || file.mimetype.startsWith("image/")) {
-//             fileName = `thumb_${timestamp}.${ext}`;
-//         } else if (fileType === "video" || file.mimetype.startsWith("video/")) {
-//             fileName = `video_${timestamp}.${ext}`;
-//         } else {
-//             fileName = `file_${timestamp}.${ext}`;
-//         }
-
-//         // ✅ FINAL KEY PATH
-//         const key = `${BASE_PATH}/${fileName}`;
-
-//         const fileContent = fs.readFileSync(file.path);
-
-//         const params = {
-//             Bucket: process.env.AWS_BUCKET,
-//             Key: key,
-//             Body: fileContent,
-//             ContentType: file.mimetype,
-//             ContentDisposition: "inline"
-//         };
-
-//         const command = new PutObjectCommand(params);
-//         await client.send(command);
-
-//         // delete temp file
-//         fs.unlinkSync(file.path);
-
-//         // ✅ return CDN URL
-//         return `${process.env.AWS_ITEM_BASE_URL}${key}`;
-
-//     } catch (error) {
-//         console.error("Error uploading file to R2:", error);
-//         throw error;
-//     }
-// }
-
-// module.exports = {
-//     uploadFileToS3,
-//     getPresignedUploadUrl
-// };
-
-
-
-
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const fs = require("fs");
@@ -133,7 +10,10 @@ const client = new S3Client({
         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
     },
-    forcePathStyle: true
+    forcePathStyle: true,
+    // ✅ Disable flexible checksums for R2 compatibility (Fixes CORS/Signature issues)
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED"
 });
 
 // ✅ BASE FOLDER
@@ -163,13 +43,12 @@ function getExtension(mimeType = "", originalName = "") {
 
 
 // ✅ PRESIGNED URL (Frontend Upload)
-async function getPresignedUploadUrl(fileType = "file", mimeType = "", originalName = "") {
+async function getPresignedUploadUrl(folderPath = "others", fileType = "file", mimeType = "", originalName = "") {
     try {
         const timestamp = Date.now();
         const ext = getExtension(mimeType, originalName);
 
         let fileName;
-
         if (fileType === "thumb" || mimeType.startsWith("image/")) {
             fileName = `thumb_${timestamp}.${ext}`;
         } else if (fileType === "video" || mimeType.startsWith("video/")) {
@@ -178,8 +57,11 @@ async function getPresignedUploadUrl(fileType = "file", mimeType = "", originalN
             fileName = `file_${timestamp}.${ext}`;
         }
 
-        const key = `${BASE_PATH}/${fileName}`;
+        // Combine BASE_PATH with the specific folderPath
+        const key = `${BASE_PATH}/${folderPath}/${fileName}`.replace(/\/+/g, '/');
 
+        // ✅ IMPORTANT: For R2, we include ContentType in the command 
+        // but we need to ensure the frontend sends it exactly.
         const command = new PutObjectCommand({
             Bucket: process.env.AWS_BUCKET,
             Key: key,
@@ -187,12 +69,14 @@ async function getPresignedUploadUrl(fileType = "file", mimeType = "", originalN
         });
 
         const presignedUrl = await getSignedUrl(client, command, {
-            expiresIn: 3600
+            expiresIn: 3600,
+            // ✅ Explicitly sign the Content-Type header
+            unhoistedableHeaders: new Set(["content-type"]),
         });
 
         return {
             presignedUrl,
-            fileUrl: `${process.env.AWS_ITEM_BASE_URL}${key}`,
+            fileUrl: `${process.env.AWS_ITEM_BASE_URL}${key}`.replace(/([^:]\/)\/+/g, "$1"),
             key,
             fileName
         };
@@ -205,23 +89,21 @@ async function getPresignedUploadUrl(fileType = "file", mimeType = "", originalN
 
 
 // ✅ DIRECT UPLOAD (Multer)
-async function uploadFileToS3(file, fileType = "file") {
+async function uploadFileToS3(file, folderPath = "others") {
     try {
         const timestamp = Date.now();
-
         const ext = getExtension(file.mimetype, file.originalname);
 
         let fileName;
-
-        if (fileType === "thumb" || file.mimetype.startsWith("image/")) {
+        if (file.mimetype.startsWith("image/")) {
             fileName = `thumb_${timestamp}.${ext}`;
-        } else if (fileType === "video" || file.mimetype.startsWith("video/")) {
+        } else if (file.mimetype.startsWith("video/")) {
             fileName = `video_${timestamp}.${ext}`;
         } else {
             fileName = `file_${timestamp}.${ext}`;
         }
 
-        const key = `${BASE_PATH}/${fileName}`;
+        const key = `${BASE_PATH}/${folderPath}/${fileName}`.replace(/\/+/g, '/');
 
         const fileContent = fs.readFileSync(file.path);
 
@@ -236,7 +118,7 @@ async function uploadFileToS3(file, fileType = "file") {
         // delete temp file
         fs.unlinkSync(file.path);
 
-        return `${process.env.AWS_ITEM_BASE_URL}${key}`;
+        return `${process.env.AWS_ITEM_BASE_URL}${key}`.replace(/([^:]\/)\/+/g, "$1");
 
     } catch (error) {
         console.error("Upload Error:", error);

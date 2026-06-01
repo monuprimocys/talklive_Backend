@@ -1,3 +1,5 @@
+const { formatMediaUrl } = require("../src/helper/url.helper");
+
 module.exports = (sequelize, DataTypes) => {
     const Music = sequelize.define("Music", {
         music_id: {
@@ -36,14 +38,7 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
             defaultValue: "",
             get() {
-                let rawUrl = this.getDataValue("music_thumbnail");
-                if (rawUrl?.includes("amazonaws.com") || rawUrl?.includes("cloudfront.net")) {
-                    return rawUrl
-                }
-                let fullUrl =
-                    process.env.baseUrl + "/" + rawUrl;
-                fullUrl == process.env.baseUrl ? "" : fullUrl;
-                return fullUrl;
+                return formatMediaUrl(this.getDataValue("music_thumbnail"));
             },
         },
         music_url: {
@@ -51,14 +46,7 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
             defaultValue: "",
             get() {
-                let rawUrl = this.getDataValue("music_url");
-                if (rawUrl?.includes("amazonaws.com") || rawUrl?.includes("cloudfront.net")) {
-                    return rawUrl
-                }
-                let fullUrl =
-                    process.env.baseUrl + "/" + rawUrl;
-                fullUrl == process.env.baseUrl ? "" : fullUrl;
-                return fullUrl;
+                return formatMediaUrl(this.getDataValue("music_url"));
             },
         },
         total_use: {
@@ -82,7 +70,7 @@ module.exports = (sequelize, DataTypes) => {
         // Music.belongsTo(models.User, {
         //     as: "Uploader",
         //     foreignKey: "uploader_id",
-           
+
         // });
         Music.hasMany(models.Action, {
             foreignKey: "music_id",
@@ -92,7 +80,7 @@ module.exports = (sequelize, DataTypes) => {
         })
         Music.hasMany(models.Social, {
             foreignKey: "music_id",
-            
+
         })
     }
     return Music;

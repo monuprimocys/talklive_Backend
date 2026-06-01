@@ -1,3 +1,5 @@
+const { formatMediaUrl } = require("../src/helper/url.helper");
+
 module.exports = (sequelize, DataTypes) => {
   const Social = sequelize.define("Social", {
     social_id: {
@@ -27,36 +29,14 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: "",
     },
 
- reel_thumbnail: {
-  type: DataTypes.STRING,
-  allowNull: false,
-  defaultValue: "",
-  get() {
-    let rawUrl = this.getDataValue("reel_thumbnail");
-
-    // ✅ empty check
-    if (!rawUrl) return "";
-
-    // ✅ already full URL (S3 / R2 / CDN)
-    if (
-      rawUrl.includes("amazonaws.com") ||
-      rawUrl.includes("cloudfront.net") ||
-      rawUrl.includes("r2.cloudflarestorage.com") ||
-      rawUrl.startsWith("http://") ||
-      rawUrl.startsWith("https://")
-    ) {
-      return rawUrl;
-    }
-
-    // ✅ base URL join safely
-    const baseUrl = process.env.baseUrl?.replace(/\/$/, ""); // remove trailing /
-    const path = rawUrl.replace(/^\//, ""); // remove starting /
-
-    const fullUrl = `${baseUrl}/${path}`;
-
-    return fullUrl;
-  },
-},
+    reel_thumbnail: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: "",
+      get() {
+        return formatMediaUrl(this.getDataValue("reel_thumbnail"));
+      },
+    },
     location: {
       type: DataTypes.STRING,
       allowNull: false,

@@ -2,35 +2,36 @@ const { generalResponse } = require("../../../helper/response.helper");
 const updateFieldsFilter = require("../../../helper/updateField.helper");
 const { createMusic, getMusic, deleteMusic, updateMusic } = require("../../../service/repository/Music.service");
 const { getUser } = require("../../../service/repository/user.service");
+const { uploadFileToS3 } = require("../../../service/common/s3.service");
 
 async function uploadMusic(req, res) {
     try {
 
         let allowedUpdateFieldsMandatory = [];
 
-        allowedUpdateFieldsMandatory = ['music_title']
+        allowedUpdateFieldsMandatory = ['music_title', 'music_desc', 'owner']
         let filteredData;
         try {
             filteredData = updateFieldsFilter(req.body, allowedUpdateFieldsMandatory, true);
             filteredData.uploader_id = req.authData.admin_id
             if (process.env.MEDIAFLOW == "S3") {
-                if (!req.body.file_media_1 || !req.body.file_media_2) {
-                    return generalResponse(
-                        res,
-                        { success: false },
-                        "file_media_1 and file_media_2 are required",
-                        false,
-                        true
-                    )
+                if (req.body.file_media_1 && req.body.file_media_2) {
+                    filteredData.music_thumbnail = req.body.file_media_1;
+                    filteredData.music_url = req.body.file_media_2;
+                } else if (req.files && req.files.length >= 2) {
+                    filteredData.music_thumbnail = await uploadFileToS3(req.files[0], "reelboost/music/thumbnails");
+                    filteredData.music_url = await uploadFileToS3(req.files[1], "reelboost/music/files");
+                } else {
+                    return generalResponse(res, { success: false }, "file_media_1 and file_media_2 are required", false, true);
                 }
-                filteredData.music_thumbnail = req.body.file_media_1
-                filteredData.music_url = req.body.file_media_2
             }
             else {
-
-
-                filteredData.music_thumbnail = req.files[0].path
-                filteredData.music_url = req.files[1].path
+                if (req.files && req.files.length >= 2) {
+                    filteredData.music_thumbnail = req.files[0].path;
+                    filteredData.music_url = req.files[1].path;
+                } else {
+                    return generalResponse(res, { success: false }, "Files are required", false, true);
+                }
             }
         }
         catch (err) {
@@ -261,16 +262,25 @@ async function update_Music(req, res) {
         let filteredData;
         try {
             filteredData = updateFieldsFilter(req.body, allowedUpdateFields);
-            if (process.env.MEDIAFLOW == "S3" && req.body.file_media_1) {
+            if (process.env.MEDIAFLOW == "S3") {
+                if (req.body.file_media_1) {
+                    filteredData.music_thumbnail = req.body.file_media_1;
+                } else if (req.files && req.files.length > 0) {
+                    filteredData.music_thumbnail = await uploadFileToS3(req.files[0], "reelboost/music/thumbnails");
+                }
 
-                filteredData.music_thumbnail = req.body.file_media_1
+                if (req.body.file_media_2) {
+                    filteredData.music_url = req.body.file_media_2;
+                } else if (req.files && req.files.length > 1) {
+                    filteredData.music_url = await uploadFileToS3(req.files[1], "reelboost/music/files");
+                }
             }
             else {
-                if (req.files && req.files && req.files.length > 0) {
-
-
-                    filteredData.music_thumbnail = req.files[0].path
-
+                if (req.files && req.files.length > 0 && req.files[0].path) {
+                    filteredData.music_thumbnail = req.files[0].path;
+                }
+                if (req.files && req.files.length > 1 && req.files[1].path) {
+                    filteredData.music_url = req.files[1].path;
                 }
             }
 

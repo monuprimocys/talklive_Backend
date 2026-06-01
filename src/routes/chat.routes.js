@@ -12,7 +12,8 @@ const router = express.Router();
 // Auth follow Routes
 router.use(authMiddleware)
 
-router.post("/send-message", upload.array('files', 2), message_controller_api.sendMessage);
+// ✅ Changed to upload.any() to support both 'files' and 'file_media_1/2' field names
+router.post("/send-message", upload.any(), message_controller_api.sendMessage);
 router.post("/forward-message", forwardMessage);
 
 
