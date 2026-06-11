@@ -10,6 +10,7 @@ const fs = require("fs");
 const axios = require("axios");
 const db = require("./models");
 const { upload, uploadingFileSize } = require("./src/middleware/upload");
+const { moderationMiddleware } = require("./src/middleware/moderationMiddleware");
 const indexRoutes = require("./src/routes/index.routes");
 const { initSocket } = require("./src/service/common/socket.service");
 const { soketAuthMiddleware } = require("./src/middleware/authMiddleware");
@@ -143,7 +144,7 @@ app.use((req, res, next) => {
             req.files = []; // Ensure it's an empty array if not found
         }
 
-        next(); // Continue to the next middleware or route handler
+        moderationMiddleware(req, res, next); // Continue to moderation check before route handler
     });
 });
 

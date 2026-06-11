@@ -1,6 +1,7 @@
 const express = require('express');
 const { authMiddleware } = require('../middleware/authMiddleware');
 const { upload } = require('../middleware/upload');
+const { moderationMiddleware } = require('../middleware/moderationMiddleware');
 const feed_controller = require('../controller/feed_controller/feed.controller');
 
 const router = express.Router();
@@ -19,7 +20,7 @@ const router = express.Router();
  * @files   For S3 mode: Send file_media_1 (image/video URL) in body
  *          For Local mode: Send files via multipart/form-data
  */
-router.post('/create', authMiddleware, upload.fields([{ name: 'files', maxCount: 10 }]), feed_controller.createFeedPost);
+router.post('/create', authMiddleware, upload.fields([{ name: 'files', maxCount: 10 }]), moderationMiddleware, feed_controller.createFeedPost);
 
 /**
  * @route   POST /api/feed/get-presigned-url
@@ -38,7 +39,7 @@ router.post('/get-presigned-url', authMiddleware, feed_controller.getPresignedUr
  * @access  Private
  * @files   Single file: 'file'
  */
-router.post('/upload-media-in-s3', authMiddleware, upload.single('file'), feed_controller.uploadMediaS3);
+router.post('/upload-media-in-s3', authMiddleware, upload.single('file'), moderationMiddleware, feed_controller.uploadMediaS3);
 
 /**
  * @route   POST /api/feed/get-feed
@@ -90,7 +91,7 @@ router.delete('/delete-feed/:feed_id', authMiddleware, feed_controller.deleteFee
  * @access  Private
  * @files   Single file: 'file'
  */
-router.post('/add-media/:feed_id', authMiddleware, upload.single('file'), feed_controller.uploadFeedMedia);
+router.post('/add-media/:feed_id', authMiddleware, upload.single('file'), moderationMiddleware, feed_controller.uploadFeedMedia);
 
 /**
  * @route   POST /api/feed/like-feed

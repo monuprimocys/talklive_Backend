@@ -14,7 +14,6 @@ const {
 
 
 async function authMiddleware(req, res, next) {  
-  console.log("Auth Middleware Invoked");
   if (!req.headers.authorization) {
     return res
       .status(403)
