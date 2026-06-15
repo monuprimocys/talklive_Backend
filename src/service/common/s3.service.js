@@ -1,4 +1,4 @@
-const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const fs = require("fs");
 
@@ -127,7 +127,24 @@ async function uploadFileToS3(file, folderPath = "others") {
 }
 
 
+// ✅ DELETE FILE
+async function deleteFileFromS3(key) {
+    try {
+        if (!key) return false;
+        await client.send(new DeleteObjectCommand({
+            Bucket: process.env.AWS_BUCKET,
+            Key: key
+        }));
+        return true;
+    } catch (error) {
+        console.error("Delete Error:", error);
+        return false;
+    }
+}
+
+
 module.exports = {
     uploadFileToS3,
-    getPresignedUploadUrl
+    getPresignedUploadUrl,
+    deleteFileFromS3
 };

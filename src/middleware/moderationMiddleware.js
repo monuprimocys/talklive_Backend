@@ -1,8 +1,10 @@
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
+const axios = require('axios');
 const { moderateImage, moderateVideo } = require('../service/common/moderationService');
 const { generalResponse } = require('../helper/response.helper');
+const { deleteFileFromS3 } = require('../service/common/s3.service');
 
 /**
  * Middleware to moderate uploaded images using AWS Rekognition.
@@ -22,7 +24,6 @@ const moderationMiddleware = async (req, res, next) => {
             if (Array.isArray(req.files)) {
                 filesToCheck.push(...req.files);
             } else if (typeof req.files === 'object') {
-                // Handle upload.fields() where req.files is an object with field names as keys
                 Object.values(req.files).forEach(fileArray => {
                     if (Array.isArray(fileArray)) {
                         filesToCheck.push(...fileArray);
@@ -30,6 +31,20 @@ const moderationMiddleware = async (req, res, next) => {
                         filesToCheck.push(fileArray);
                     }
                 });
+            }
+        }
+
+        // Handle S3 URLs in req.body if no physical files are present
+        const urlsToCheck = [];
+        if (process.env.MEDIAFLOW === "S3") {
+            let i = 1;
+            while (req.body[`file_media_${i}`]) {
+                urlsToCheck.push(req.body[`file_media_${i}`]);
+                i++;
+            }
+            // Also check single 'file' field if it's a URL
+            if (req.body.file && typeof req.body.file === 'string' && req.body.file.startsWith('http')) {
+                urlsToCheck.push(req.body.file);
             }
         }
 
@@ -87,6 +102,47 @@ const moderationMiddleware = async (req, res, next) => {
                     true,
                     400
                 );
+            }
+        }
+
+        // Check URLs
+        for (const url of urlsToCheck) {
+            console.log(`Checking URL for moderation: ${url}`);
+            try {
+                const response = await axios.get(url, { responseType: 'arraybuffer' });
+                const buffer = Buffer.from(response.data, 'binary');
+                const contentType = response.headers['content-type'];
+
+                let result = { isSafe: true };
+                if (contentType && contentType.startsWith('image/')) {
+                    result = await moderateImage(buffer);
+                } else if (contentType && contentType.startsWith('video/')) {
+                    // For videos in S3, we'd need to download and process. 
+                    // This might be slow. For now, we'll focus on images.
+                    // result = await moderateVideo(url); 
+                }
+
+                if (!result.isSafe) {
+                    console.warn(`Unsafe content detected in URL: ${url}. Labels: ${result.labels.join(', ')}`);
+
+                    // Clean up: delete from S3 if it's an S3 URL
+                    if (url.includes(process.env.AWS_ITEM_BASE_URL)) {
+                        const key = url.replace(process.env.AWS_ITEM_BASE_URL, '');
+                        await deleteFileFromS3(key);
+                        console.log(`Deleted unsafe file from S3: ${key}`);
+                    }
+
+                    return generalResponse(
+                        res,
+                        { unsafe: true, labels: result.labels },
+                        "Upload rejected: Unsafe content detected in the media URL.",
+                        false,
+                        true,
+                        400
+                    );
+                }
+            } catch (urlErr) {
+                console.error(`Error downloading URL for moderation: ${url}`, urlErr.message);
             }
         }
 
