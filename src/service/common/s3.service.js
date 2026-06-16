@@ -21,24 +21,37 @@ const BASE_PATH = "TokLive/uploads_v2";
 
 
 // ✅ EXTENSION DETECTOR (MAIN FIX)
+
 function getExtension(mimeType = "", originalName = "") {
-    // 1. Try from original filename
-    if (originalName) {
+    // 1. From original file name
+    if (originalName && originalName.includes(".")) {
         const ext = originalName.split(".").pop();
         if (ext) return ext.toLowerCase();
     }
 
-    // 2. Fallback using mimeType
-    if (!mimeType) return "bin";
+    // 2. From MIME type
+    if (mimeType) {
+        // remove parameters like charset=utf-8
+        const cleanMime = mimeType.split(";")[0];
 
-    if (mimeType.includes("jpeg") || mimeType.includes("jpg")) return "jpg";
-    if (mimeType.includes("png")) return "png";
-    if (mimeType.includes("webp")) return "webp";
-    if (mimeType.includes("webm")) return "webm";
-    if (mimeType.includes("mp4")) return "mp4";
-    if (mimeType.includes("mov") || mimeType.includes("quicktime")) return "mov";
+        // take subtype (after /)
+        const parts = cleanMime.split("/");
 
-    return "bin";
+        if (parts.length === 2) {
+            let ext = parts[1].toLowerCase();
+
+            // remove vendor prefixes like vnd., x-
+            ext = ext.replace(/^x-/, "").replace(/^vnd\./, "");
+
+            // handle special cases cleanup
+            if (ext.includes("jpeg")) return "jpg";
+
+            return ext;
+        }
+    }
+
+    // 3. No fallback like "bin"
+    return "unknown"; // or return ""
 }
 
 
