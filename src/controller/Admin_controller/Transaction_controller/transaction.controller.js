@@ -56,8 +56,8 @@ async function approve_transaction(req, res) {
                             playerIds: [notification_user.device_token],
                             title: "Withdrawal Approved",
                             message: `Your withdrawal request of ${transaction.Records[0].acutal_money} ${transaction.Records[0].currency} approved`,
-                            data:{
-                                type:"withdrawal_approve",
+                            data: {
+                                type: "withdrawal_approve",
                                 trasaction_id: filteredData.transaction_id
 
                             }
@@ -224,11 +224,11 @@ async function get_transaction_plan(req, res) {
                 true
             );
         }
-        const { page= 1, pageSize= 10 } = req.body
+        const { page = 1, pageSize = 10 } = req.body
         if (req.user_type != "admin") {
-            filteredData.status= true
-         }
-        const transaction_plan = await getTransactionPlan(filteredData, { page , pageSize })
+            filteredData.status = true
+        }
+        const transaction_plan = await getTransactionPlan(filteredData, { page, pageSize })
         if (transaction_plan.Records.length > 0) {
             return generalResponse(
                 res,

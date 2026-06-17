@@ -133,7 +133,14 @@ async function getPresignedUrl(req, res) {
       folderPath = 'reelboost/feed/thumbnails';
     }
 
+
+
+    console.log(" file ", file_type, mime_type, folderPath);
+
+
     const result = await getPresignedUploadUrl(folderPath, file_type, mime_type);
+
+    console.log("Presigned URL result:", result);
 
     return generalResponse(
       res,
@@ -368,19 +375,11 @@ async function getFeedPosts(req, res) {
       exclude_user_ids = []
     } = req.body;
 
-    // ✅ Safe user_id handling
-    const user_id = Number(req.authData?.user_id);
 
-    if (!user_id || Number.isNaN(user_id)) {
-      return generalResponse(
-        res,
-        {},
-        "Invalid user token",
-        false,
-        true,
-        401
-      );
-    }
+    // ✅ Optional user_id
+    const user_id = req.authData?.user_id
+      ? Number(req.authData.user_id)
+      : null;
 
     // ✅ Build filter
     const filterPayload = {
@@ -1298,6 +1297,58 @@ async function reportFeedPost(req, res) {
   }
 }
 
+
+
+
+/**
+ * Update feed status (Admin / Owner)
+ * PATCH /api/feed/update-status/:feed_id
+ */
+async function updateFeedStatus(req, res) {
+  try {
+    let { status, feed_id } = req.body;
+
+    // ✅ convert properly
+    status = parseBoolean(status);
+
+    if (!feed_id || isNaN(feed_id)) {
+      return generalResponse(res, {}, "Invalid feed_id", false, true, 400);
+    }
+
+    if (typeof status !== "boolean") {
+      return generalResponse(res, {}, "Status must be true or false", false, true, 400);
+    }
+
+    const feed = await getFeedById(parseInt(feed_id));
+    if (!feed) {
+      return generalResponse(res, {}, "Feed not found", false, true, 404);
+    }
+
+    const result = await updateFeed(
+      { status },
+      { feed_id: parseInt(feed_id) }
+    );
+
+    if (result[0] === 0) {
+      return generalResponse(res, {}, "Failed to update status", false, true, 500);
+    }
+
+    return generalResponse(
+      res,
+      { feed_id: parseInt(feed_id), status },
+      "Feed status updated successfully",
+      true,
+      true,
+      200
+    );
+
+  } catch (error) {
+    console.error("Error in updateFeedStatus:", error);
+    return generalResponse(res, {}, "Something went wrong", false, true, 500);
+  }
+}
+
+
 module.exports = {
   createFeedPost,
   getFeedPosts,
@@ -1321,5 +1372,6 @@ module.exports = {
   getUserSavedFeedsController,
   reportFeedPost,
   uploadMediaS3,
-  getPresignedUrl
+  getPresignedUrl,
+  updateFeedStatus
 };

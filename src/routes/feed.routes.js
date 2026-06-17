@@ -1,5 +1,5 @@
 const express = require('express');
-const { authMiddleware } = require('../middleware/authMiddleware');
+const { authMiddleware, optionalAuthMiddleware } = require('../middleware/authMiddleware');
 const { upload } = require('../middleware/upload');
 const { moderationMiddleware } = require('../middleware/moderationMiddleware');
 const feed_controller = require('../controller/feed_controller/feed.controller');
@@ -57,7 +57,7 @@ router.post('/upload-media-in-s3', authMiddleware, upload.single('file'), modera
  *   "exclude_user_ids": [user_id1, user_id2]
  * }
  */
-router.post('/get-feed', authMiddleware, feed_controller.getFeedPosts);
+router.post('/get-feed', optionalAuthMiddleware, feed_controller.getFeedPosts);
 
 /**
  * @route   GET /api/feed/get-feed/:feed_id
@@ -224,5 +224,6 @@ router.post('/get-saved-feeds', authMiddleware, feed_controller.getUserSavedFeed
 router.post('/get-my-feeds', authMiddleware, feed_controller.getMyFeeds);
 
 router.post('/report-feed', authMiddleware, feed_controller.reportFeedPost);
+router.post("/update-status", optionalAuthMiddleware, feed_controller.updateFeedStatus);
 
 module.exports = router;

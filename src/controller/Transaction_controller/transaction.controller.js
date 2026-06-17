@@ -16,6 +16,8 @@ const { createStripeIntent } = require("../../service/common/stripe.service");
 const socket_service = require("../../service/common/socket.service");
 const { updateLiveHost, getLiveLive_host } = require("../../service/repository/Live_host.service");
 const { getLive } = require("../../service/repository/Live.service");
+const { sequelize } = require("../../../models");
+const { sendCryptoWithdrawal } = require("../../service/repository/Transactions/sendCryptoWithdrawal");
 
 // recharge
 async function Money_to_coin(req, res) {
@@ -428,171 +430,112 @@ async function Transaction_history(req, res) {
 
 
 // withdraw
+
+
+
 async function Coin_to_Money(req, res) {
+    const t = await sequelize.transaction();
+
     try {
-        const user_id = req.authData.user_id
-        allowedUpdateFields = [
-            'coins',
-            'payment_method',
-            'transaction_email'
-        ]
-        let filteredData
-        try {
-            filteredData = updateFieldsFilter(req.body, allowedUpdateFields, true);
-            filteredData.user_id = user_id
-            filteredData.success = "pending"
+        const user_id = req.authData.user_id;
+
+        const { coins, crypto_address, crypto_currency, payment_method } = req.body;
+
+        // ✅ Only allow nowpayments
+        if (payment_method !== "nowpayments") {
+            await t.rollback();
+            return generalResponse(res, {}, "Only crypto withdrawal allowed", false, true);
         }
-        catch (err) {
-            console.log(err);
-            return generalResponse(
-                res,
-                { success: false },
-                "Data is Missing",
-                false,
-                true
-            );
+
+        if (!coins || !crypto_address || !crypto_currency) {
+            await t.rollback();
+            return generalResponse(res, {}, "All fields required", false, true);
         }
-        const is_user = await getUser({ user_id })
-        if (is_user) {
-            // Check Bank details
-            const userData = is_user.toJSON();
 
+        const user = await getUser({ user_id });
 
-
-            if (filteredData.payment_method == "bank" &&
-                (!userData.account_name || userData.account_name.length === 0 ||
-                    !userData.account_number || userData.account_number.length === 0 ||
-                    !userData.bank_name || userData.bank_name.length === 0 ||
-                    !userData.IFSC_code || userData.IFSC_code.length === 0 ||
-                    !userData.swift_code || userData.swift_code.length === 0)
-            ) {
-                return generalResponse(
-                    res,
-                    { success: false },
-                    "Bank Details are Missing",
-                    false,
-                    true,
-                    501
-                );
-            }
-            const withdrawal_conf = await gettransaction_conf({ transaction_type: "withdrawal" });
-            const current_coin = Number(is_user.toJSON().available_coins);
-            if (filteredData.coins > current_coin) {
-                return generalResponse(
-                    res,
-                    { success: false },
-                    "Insufficient Coins",
-                    true,
-                    true,
-
-                );
-            }
-            if (filteredData.coins < withdrawal_conf.Records[0].minimum_transaction) {
-                return generalResponse(
-                    res,
-                    { success: false },
-                    "Minimum Withdrawal Amount is " + withdrawal_conf.Records[0].minimum_transaction,
-                    false,
-                    true,
-                    501
-                );
-            }
-            const equelent_money = Number(await get_money_value_from_coin({ Coins: filteredData.coins }));
-
-            const new_available_coin = current_coin - filteredData.coins;
-
-
-
-            // Appply transaction 
-
-
-            const update_user = await updateUser({ available_coins: Number(new_available_coin) }, { user_id: is_user.toJSON().user_id })
-            if (update_user.length > 0) {
-                const trasaction = await createMoneyCoinTransaction({
-                    payment_method: filteredData.payment_method,
-                    acutal_money: equelent_money,
-                    coin: filteredData.coins,
-                    success: filteredData.success,
-                    transaction_type: "withdrawal",
-                    coin_price: withdrawal_conf.Records[0].coin_value_per_1_currency,
-                    past_coin: current_coin,
-                    new_available_coin: new_available_coin,
-                    currency: withdrawal_conf.Records[0].currency,
-                    transaction_id_gateway: "",
-                    user_id: filteredData.user_id
-                })
-                if (trasaction) {
-                    sendPushNotification(
-                        {
-                            playerIds: [req.userData.device_token],
-                            title: "Withdrawal request",
-                            message: `Your withdrawl request of ${equelent_money} ${withdrawal_conf.Records[0].currency}`,
-                            data: {
-                                type: "withdrawal_request",
-                                trasaction_id: trasaction.transaction_id
-
-                            }
-                        }
-                    )
-                    return generalResponse(
-                        res,
-                        {},
-                        `Your request of withdrawal of ${filteredData.coins} coins has been recived and will be processed soon`,
-                        true,
-                        true
-                    );
-                }
-                return generalResponse(
-                    res,
-                    {},
-                    `Transaction Failed`,
-                    true,
-                    true
-                );
-            }
-            else {
-                const trasaction = await createMoneyCoinTransaction({
-                    payment_method: "",
-                    acutal_money: equelent_money,
-                    coin: filteredData.coins,
-                    success: "Not Reflected in Profile",
-                    transaction_type: "withdrawal",
-                    coin_price: withdrawal_conf.Records[0].coin_value_per_1_currency,
-                    past_coin: current_coin,
-                    new_available_coin: new_available_coin,
-                    currency: withdrawal_conf.Records[0].currency,
-                    transaction_id_gateway: "",
-                    user_id: filteredData.user_id
-
-                })
-                return generalResponse(
-                    res,
-                    {},
-                    `We received your request the coins will be reflected in you profile after verification`,
-                    false,
-                    true
-                );
-            }
-
-            // update user-Coin
-
+        if (!user) {
+            await t.rollback();
+            return generalResponse(res, {}, "User not found", false, true);
         }
-        else {
-            return generalResponse(
-                res,
-                { success: false },
-                "User Not found !",
-                false,
-                true,
-                404
-            );
+
+        const current_coin = Number(user.available_coins);
+        const requested_coins = Number(coins);
+
+        if (requested_coins <= 0) {
+            await t.rollback();
+            return generalResponse(res, {}, "Invalid coin amount", false, true);
         }
-    } catch (error) {
-        console.error("Error in withdrawal", error);
+
+        if (requested_coins > current_coin) {
+            await t.rollback();
+            return generalResponse(res, {}, "Insufficient Coins", false, true);
+        }
+
+        // 👉 Convert coin → money
+        const money = Number(
+            await get_money_value_from_coin({ Coins: requested_coins })
+        );
+
+        if (!money || money <= 0) {
+            await t.rollback();
+            return generalResponse(res, {}, "Conversion failed", false, true);
+        }
+
+        // ✅ IMPORTANT FIX
+        const coin_price = money / requested_coins;
+
+        const new_balance = current_coin - requested_coins;
+
+        // =====================================================
+        // 🚀 ONLY ENTRY (NO REAL PAYMENT)
+        // =====================================================
+
+        // ✅ Deduct coins (optional based on your flow)
+        await updateUser(
+            { available_coins: new_balance },
+            { user_id },
+            { transaction: t }
+        );
+
+        // ✅ Save transaction as PENDING
+        await createMoneyCoinTransaction(
+            {
+                payment_method: "nowpayments",
+                acutal_money: money,
+                coin: requested_coins,
+                coin_price: coin_price, // 🔥 FIXED
+                success: "pending",
+                transaction_type: "withdrawal",
+                transaction_id_gateway: "",
+                past_coin: current_coin,
+                new_available_coin: new_balance,
+                currency: crypto_currency.toUpperCase(),
+                crypto_address: crypto_address,
+                user_id
+            },
+            { transaction: t }
+        );
+
+        await t.commit();
+
         return generalResponse(
             res,
-            { success: false },
-            "Something went wrong while withdrawing !",
+            {},
+            "Withdrawal request submitted (Pending approval) ⏳",
+            true,
+            true
+        );
+
+    } catch (error) {
+        console.error("Withdraw Error:", error);
+
+        await t.rollback();
+
+        return generalResponse(
+            res,
+            {},
+            error.message || "Something went wrong",
             false,
             true
         );
@@ -1421,12 +1364,6 @@ async function Transaction_history_BattelWinnor(req, res) {
         });
     }
 }
-
-
-
-
-
-
 
 
 
