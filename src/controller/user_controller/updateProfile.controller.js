@@ -6,11 +6,12 @@ const { generalResponse } = require("../../helper/response.helper");
 const updateFieldsFilter = require("../../helper/updateField.helper");
 const { getAvatars } = require("../../service/repository/Avatar.service");
 const { getConfig } = require("../../service/repository/Project_conf.service");
-const { updateSocial } = require("../../service/repository/SocialMedia.service");
+const {
+  updateSocial,
+} = require("../../service/repository/SocialMedia.service");
 
 async function updateProfile(req, res) {
   try {
-
     const pictureType = req.body.pictureType; //id_proof , selfie , profile_pic
     const user_id = req.authData.user_id;
     allowedUpdateFields = [
@@ -42,11 +43,11 @@ async function updateProfile(req, res) {
       "delete",
       "message_price",
       "call_price",
-      "video_call_price"
+      "video_call_price",
     ];
     let filteredData;
     // if (filteredData)
-    let is_demo_user
+    let is_demo_user;
 
     try {
       filteredData = updateFieldsFilter(req.body, allowedUpdateFields, false);
@@ -57,24 +58,26 @@ async function updateProfile(req, res) {
         { success: false },
         "Data is Missing",
         false,
-        true
+        true,
       );
     }
     filteredData.user_id = user_id;
     if (filteredData.last_name && filteredData.first_name) {
-      filteredData.full_name = filteredData.first_name + filteredData.last_name
+      filteredData.full_name = filteredData.first_name + filteredData.last_name;
     }
     if (pictureType != undefined && pictureType != "") {
       if (pictureType == "id_proof") {
         if (process.env.MEDIAFLOW == "S3") {
-          if (req.body.file_media_1) filteredData.id_proof = req.body.file_media_1;
+          if (req.body.file_media_1)
+            filteredData.id_proof = req.body.file_media_1;
         } else {
           filteredData.id_proof = req.files[0].path;
         }
       }
       if (pictureType == "selfie") {
         if (process.env.MEDIAFLOW == "S3") {
-          if (req.body.file_media_1) filteredData.selfie = req.body.file_media_1;
+          if (req.body.file_media_1)
+            filteredData.selfie = req.body.file_media_1;
         } else {
           filteredData.selfie = req.files[0].path;
         }
@@ -87,87 +90,84 @@ async function updateProfile(req, res) {
               { success: false },
               "file_media_1 is required",
               false,
-              true
-            )
+              true,
+            );
           }
           filteredData.profile_pic = req.body.file_media_1;
-        }
-        else {
+        } else {
           filteredData.profile_pic = req.files[0].path;
         }
-
       }
       if (pictureType == "avatar") {
         if (!req.body.avatar_id) {
-          return generalResponse(
-            res,
-            {},
-            "Avatar ID is required",
-            false,
-            true
-          );
+          return generalResponse(res, {}, "Avatar ID is required", false, true);
         }
-        const avatar = await getAvatars({ avatar_id: req.body.avatar_id, status: true });
-
+        const avatar = await getAvatars({
+          avatar_id: req.body.avatar_id,
+          status: true,
+        });
 
         if (avatar.Records.length == 0) {
-          return generalResponse(
-            res,
-            {},
-            "Avatar Not Found",
-            false,
-            true
-          );
+          return generalResponse(res, {}, "Avatar Not Found", false, true);
         }
-        filteredData.profile_pic = avatar.Records[0].avatar_media.replace(/^.*?(uploads\/)/, '$1');
+        filteredData.profile_pic = avatar.Records[0].avatar_media.replace(
+          /^.*?(uploads\/)/,
+          "$1",
+        );
       }
     }
 
     const isUser = await getUser({ user_id });
 
     if (isUser) {
-      filteredData.login_verification_status = true
+      filteredData.login_verification_status = true;
       if (filteredData.delete) {
-        const project_setting = await getConfig({ config_id: 1 })
+        const project_setting = await getConfig({ config_id: 1 });
 
-        filteredData.full_name = `${project_setting.app_name} User`
-        filteredData.first_name = `${project_setting.app_name}`
-        filteredData.last_name = " User"
-        filteredData.email = null
-        filteredData.mobile_num = null
-        filteredData.country_code = ""
-        filteredData.user_name = null
-        filteredData.profile_pic = ""
-        filteredData.gender = ""
-        filteredData.login_verification_status = false
-        filteredData.available_coins = 0
-        filteredData.total_socials = 0
-        filteredData.platforms = []
-        filteredData.is_deleted = true
+        filteredData.full_name = `${project_setting.app_name} User`;
+        filteredData.first_name = `${project_setting.app_name}`;
+        filteredData.last_name = " User";
+        filteredData.email = null;
+        filteredData.mobile_num = null;
+        filteredData.country_code = "";
+        filteredData.user_name = null;
+        filteredData.profile_pic = "";
+        filteredData.gender = "";
+        filteredData.login_verification_status = false;
+        filteredData.available_coins = 0;
+        filteredData.total_socials = 0;
+        filteredData.platforms = [];
+        filteredData.is_deleted = true;
 
         const updated_social = await updateSocial(
           {
             user_id: isUser.user_id,
           },
           {
-            deleted_by_user: true
-          }
-        )
-
+            deleted_by_user: true,
+          },
+        );
       }
-      if (req.userData.email == 'demo@reelboost.com' || (req.userData.mobile_num == '1234567890' && req.userData.country_code == '+1')) {
+      if (
+        req.userData.email == "demo@reelboost.com" ||
+        (req.userData.mobile_num == "1234567890" &&
+          req.userData.country_code == "+1")
+      ) {
         if (filteredData?.device_token) {
-          const isUpdated = await updateUser({ device_token: filteredData.device_token }, {
-            user_id: isUser.user_id,
-          });
+          const isUpdated = await updateUser(
+            { device_token: filteredData.device_token },
+            {
+              user_id: isUser.user_id,
+            },
+          );
         }
         return generalResponse(
           res,
           req.userData,
           "You can not edit this demo account",
           false,
-          true
-        )
+          true,
+        );
       }
       const isUpdated = await updateUser(filteredData, {
         user_id: isUser.user_id,
@@ -180,7 +180,7 @@ async function updateProfile(req, res) {
           updatedUser,
           "User updated successfully ",
           true,
-          false
+          false,
         );
       } else {
         return generalResponse(res, {}, "User Not Updated ", false, false);
@@ -192,7 +192,7 @@ async function updateProfile(req, res) {
         "User Not Updated ",
         false,
         false,
-        404
+        404,
       );
     }
   } catch (err) {
@@ -201,14 +201,14 @@ async function updateProfile(req, res) {
     let userMessage = "Something went wrong while Signin!";
     let devMessage = err.message;
 
-    if (err.name === 'SequelizeUniqueConstraintError') {
+    if (err.name === "SequelizeUniqueConstraintError") {
       const field = err.errors[0]?.path;
       const value = err.errors[0]?.value;
 
-      if (field === 'mobile_num') {
+      if (field === "mobile_num") {
         userMessage = `Mobile number ${value} is already in use.`;
       }
-      if (field === 'email') {
+      if (field === "email") {
         userMessage = `Email ${value} is already in use.`;
       } else {
         userMessage = `${field} must be unique.`;
@@ -217,25 +217,18 @@ async function updateProfile(req, res) {
 
     return generalResponse(
       res,
-      devMessage,  // developer error message
+      devMessage, // developer error message
       userMessage, // user-friendly message
       false,
-      true
+      true,
     );
   }
-
 }
 async function updateProfileAdmin(req, res) {
   try {
     const admin_id = req.authData.admin_id;
     if (!req.body.user_id) {
-      return generalResponse(
-        res,
-        {},
-        "User ID is required",
-        false,
-        true
-      );
+      return generalResponse(res, {}, "User ID is required", false, true);
     }
     const user_id = req.body.user_id;
     allowedUpdateFields = [
@@ -262,7 +255,7 @@ async function updateProfileAdmin(req, res) {
       "swift_code",
       "IFSC_code",
       "blocked_by_admin",
-      "transaction_email"
+      "transaction_email",
     ];
     let filteredData;
     try {
@@ -274,12 +267,16 @@ async function updateProfileAdmin(req, res) {
         { success: false },
         "Data is Missing",
         false,
-        true
+        true,
       );
     }
     filteredData.user_id = user_id;
 
-    if (req.body.pictureType && req.body.pictureType != undefined && req.body.pictureType != "") {
+    if (
+      req.body.pictureType &&
+      req.body.pictureType != undefined &&
+      req.body.pictureType != ""
+    ) {
       if (req.body.pictureType == "id_proof") {
         filteredData.id_proof = req.files[0].path;
       }
@@ -305,7 +302,7 @@ async function updateProfileAdmin(req, res) {
           updatedUser,
           "User updated successfully ",
           true,
-          false
+          false,
         );
       } else {
         return generalResponse(res, {}, "User Not Updated ", false, false);
@@ -317,7 +314,7 @@ async function updateProfileAdmin(req, res) {
         "User Not Updated ",
         false,
         false,
-        404
+        404,
       );
     }
   } catch (err) {
@@ -326,14 +323,14 @@ async function updateProfileAdmin(req, res) {
     let userMessage = "Something went wrong while Signin!";
     let devMessage = err.message;
 
-    if (err.name === 'SequelizeUniqueConstraintError') {
+    if (err.name === "SequelizeUniqueConstraintError") {
       const field = err.errors[0]?.path;
       const value = err.errors[0]?.value;
 
-      if (field === 'mobile_num') {
+      if (field === "mobile_num") {
         userMessage = `Mobile number ${value} is already in use.`;
       }
-      if (field === 'email') {
+      if (field === "email") {
         userMessage = `Email ${value} is already in use.`;
       } else {
         userMessage = `${field} must be unique.`;
@@ -342,16 +339,54 @@ async function updateProfileAdmin(req, res) {
 
     return generalResponse(
       res,
-      devMessage,  // developer error message
+      devMessage, // developer error message
       userMessage, // user-friendly message
       false,
-      true
+      true,
     );
   }
-
 }
 
-module.exports = {
-  updateProfile,
-  updateProfileAdmin,
-};
+async function getPresignedUrl(req, res) {
+  try {
+    const {
+      file_type = "thumb",
+      mime_type = "image/jpeg",
+      folder_path = "reelboost/profile",
+    } = req.body;
+
+    const result = await getPresignedUploadUrl(
+      folder_path,
+      file_type,
+      mime_type,
+    );
+
+    return generalResponse(
+      res,
+      {
+        presigned_url: result.presignedUrl,
+        file_url: result.fileUrl,
+        key: result.key,
+        file_name: result.fileName,
+      },
+      "Presigned URL generated successfully",
+      true,
+      true,
+    );
+  } catch (error) {
+    console.error("Error generating presigned URL:", error);
+    return generalResponse(
+      res,
+      { success: false },
+      "Something went wrong while generating presigned URL!",
+      false,
+      true,
+    );
+  }
+}
+
+  module.exports = {
+    updateProfile,
+    updateProfileAdmin,
+    getPresignedUrl,
+  };

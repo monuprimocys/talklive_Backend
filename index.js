@@ -72,7 +72,7 @@ app.get("/", (req, res) => {
 // app.use(upload.array("files"));
 app.use((req, res, next) => {
 
-    const routeOwnsMultipart = req.path.startsWith("/api/feed/") || req.path === "/api/chat/send-message";
+    const routeOwnsMultipart = req.path.startsWith("/api/feed/") || req.path === "/api/chat/send-message" || req.path.startsWith("/api/story/");
     if (routeOwnsMultipart) {
         return next();
     }

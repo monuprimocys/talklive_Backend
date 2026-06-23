@@ -76,71 +76,78 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ARRAY(DataTypes.STRING),
       allowNull: true,
     },
+    latitude: {
+      type: DataTypes.DECIMAL(10, 8),
+      allowNull: true,
+    },
+    longitude: {
+      type: DataTypes.DECIMAL(11, 8),
+      allowNull: true,
+    },
   });
   Social.associate = function (models) {
     Social.belongsTo(models.User, {
       foreignKey: "user_id",
       allowNull: false,
       defaultValue: 0,
-      onDelete: 'CASCADE'
-    })
+      onDelete: "CASCADE",
+    });
     Social.hasMany(models.Taged_user, {
       foreignKey: "social_id",
       allowNull: false,
       defaultValue: 0,
-      onDelete: 'CASCADE'
-    })
+      onDelete: "CASCADE",
+    });
     Social.hasMany(models.Media, {
       foreignKey: "social_id",
       allowNull: false,
       defaultValue: 0,
-      onDelete: 'CASCADE'
-    })
+      onDelete: "CASCADE",
+    });
     Social.hasMany(models.Action, {
       foreignKey: "social_id",
       allowNull: false,
       defaultValue: 0,
-      onDelete: 'CASCADE'
-    })
+      onDelete: "CASCADE",
+    });
     Social.hasMany(models.ReportedSocials, {
       foreignKey: "social_id",
       allowNull: false,
       defaultValue: 0,
-      onDelete: 'CASCADE'
-    })
+      onDelete: "CASCADE",
+    });
     Social.hasMany(models.Like, {
       foreignKey: "social_id",
       allowNull: true,
       defaultValue: 0,
-      onDelete: 'CASCADE'
-    })
+      onDelete: "CASCADE",
+    });
     Social.hasMany(models.Save, {
       foreignKey: "social_id",
       allowNull: true,
       defaultValue: 0,
-      onDelete: 'CASCADE'
-    })
+      onDelete: "CASCADE",
+    });
     Social.hasMany(models.Comment, {
       foreignKey: "social_id",
       allowNull: false,
       defaultValue: 0,
-      onDelete: 'CASCADE'
-    })
+      onDelete: "CASCADE",
+    });
     Social.hasMany(models.Message, {
       foreignKey: "social_id",
       allowNull: true,
       defaultValue: 0,
-      onDelete: 'CASCADE'
-    })
+      onDelete: "CASCADE",
+    });
     Social.belongsTo(models.Music, {
       foreignKey: "music_id",
-
-    })
+    });
     Social.hasMany(models.Notification, {
       foreignKey: "social_id",
       allowNull: true,
-      onDelete: 'CASCADE'
-    })
-  }
+      onDelete: "CASCADE",
+    });
+  };
   return Social;
-}
+};

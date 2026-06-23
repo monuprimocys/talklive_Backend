@@ -24,6 +24,7 @@ const feedRoutes = require("./feed.routes")
 const paidCommunicationRoutes = require("./paid-communication.routes")
 const paymentRoutes = require("./payment.routes")
 const notificationSettingRoutes = require("./notificationSetting.routes")
+const storyRoutes = require("./story.routes")
 
 const router = Router();
 
@@ -49,6 +50,7 @@ router.use("/hashtag", hashtag_routes )
 
 
 router.use("/feed", feedRoutes)
+router.use("/story", storyRoutes)
 
 
 router.use("/avatar", avatar_routes )
