@@ -14,8 +14,6 @@ async function create_transaction_conf(transaction_payload) {
         throw error;
     }
 }
-
-
 async function gettransaction_conf(transaction_payload, pagination = { page: 1, pageSize: 10 }, excludedUserIds = []) {
     try {
         // Destructure and ensure proper types for pagination values
@@ -104,7 +102,7 @@ async function get_coin_value_from_money(transaction_payload) {
     try {
         const recharge_conf = await getTransactionPlan({ plan_id: transaction_payload.plan_id });
         //   recharge_conf.Records[0].toJSON());
-
+        
         const coins_per_plan = recharge_conf.Records[0].toJSON().coins;
         const corresponding_money = recharge_conf.Records[0].toJSON().corresponding_money;
         const coin_value_per_1_currency = parseFloat((coins_per_plan / corresponding_money).toFixed(2));
@@ -113,13 +111,13 @@ async function get_coin_value_from_money(transaction_payload) {
             throw new Error("Recharge configuration not found.");
         }
 
-
+        
         return { coins: coins_per_plan, coin_value_per_1_currency: coin_value_per_1_currency, corresponding_money: corresponding_money };
     } catch (error) {
         console.error("Error calculating coins from money:", error);
         throw error;
     }
-}
+} 
 
 // Withdrawal
 async function get_money_value_from_coin(transaction_payload) {

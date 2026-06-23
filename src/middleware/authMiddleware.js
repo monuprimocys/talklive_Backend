@@ -13,7 +13,7 @@ const {
 } = require("../controller/chat_controller/Message.controller");
 
 
-async function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {  
   if (!req.headers.authorization) {
     return res
       .status(403)
@@ -29,10 +29,10 @@ async function authMiddleware(req, res, next) {
         req.headers.authorization.split(" ")[1], // auth token
         process.env.screteKey
       );
-
+      
       if (req?.authData?.user_id) {
-
-        let isUser = await user_service.getUser({ user_id: req.authData.user_id, is_deleted: false }, false, true);
+        
+        let isUser = await user_service.getUser({ user_id: req.authData.user_id, is_deleted : false} ,false ,true);
         if (!isUser) {
           return generalResponse(res, {}, "No User found", false, true, 401);
         }
@@ -42,7 +42,7 @@ async function authMiddleware(req, res, next) {
       }
       if (req?.authData?.admin_id) {
         let is_admin = await admin_service.getAdmin({ admin_id: req.authData.admin_id });
-
+        
         if (!is_admin) {
           return generalResponse(res, {}, "No Admin found", false, true, 401);
         }
@@ -64,9 +64,9 @@ const soketAuthMiddleware = async (socket, next) => {
   // Retrieve the token from the headers
   const authToken = socket.handshake.headers["token"] || socket.handshake.auth.token;
 
-
+  
   if (!authToken) {
-
+    
     return next(new Error("Missing token during connection."));
   }
 
@@ -74,7 +74,7 @@ const soketAuthMiddleware = async (socket, next) => {
     const jwtSecretKey = process.env.screteKey; // Ensure the environment variable is correctly set
     // Verify the token and decode the user data
     const authData = jwt.verify(authToken, jwtSecretKey);
-
+    
     // Initialize authData on the socket
     socket.authData = { user_id: authData.user_id };
 
@@ -82,7 +82,7 @@ const soketAuthMiddleware = async (socket, next) => {
     const isUser = await user_service.getUser({
       user_id: socket.authData.user_id,
     });
-
+    
     if (!isUser) {
       return next(new Error("User not found."));
     }
@@ -152,11 +152,11 @@ const soketAuthMiddleware = async (socket, next) => {
             chats.user_id != socket.authData.user_id
           )
 
-            emitEvent(
-              chats.User.socket_id,
-              "online_user",
-              user_data
-            );
+          emitEvent(
+            chats.User.socket_id,
+            "online_user",
+            user_data
+          );
         });
       });
     }
@@ -239,4 +239,4 @@ async function optionalAuthMiddleware(req, res, next) {
   }
 }
 
-module.exports = { authMiddleware, soketAuthMiddleware, optionalAuthMiddleware };
+module.exports = { authMiddleware, soketAuthMiddleware , optionalAuthMiddleware };

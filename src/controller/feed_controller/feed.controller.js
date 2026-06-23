@@ -22,7 +22,9 @@ const {
   extractHashtags,
   extractMentions,
   reportFeed,
-  getFeedReports
+  getFeedReports,
+  getFeedPostsAdminservice,
+  getFeedByIdAdmin
 } = require("../../service/repository/Feed.service");
 const { getUser } = require("../../service/repository/user.service");
 const { uploadFileToS3, getPresignedUploadUrl } = require("../../service/common/s3.service");
@@ -135,12 +137,12 @@ async function getPresignedUrl(req, res) {
 
 
 
-    console.log(" file ", file_type, mime_type, folderPath);
+     console.log(" file " , file_type , mime_type , folderPath);
 
 
     const result = await getPresignedUploadUrl(folderPath, file_type, mime_type);
 
-    console.log("Presigned URL result:", result);
+      console.log("Presigned URL result:", result);
 
     return generalResponse(
       res,
@@ -375,8 +377,8 @@ async function getFeedPosts(req, res) {
       exclude_user_ids = []
     } = req.body;
 
-
-    // ✅ Optional user_id
+    
+     // ✅ Optional user_id
     const user_id = req.authData?.user_id
       ? Number(req.authData.user_id)
       : null;
@@ -432,6 +434,85 @@ async function getFeedPosts(req, res) {
     );
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+//  Get feed for admin
+
+async function getFeedPostsAdmin(req, res) {
+  try {
+    const {
+      page = 1,
+      pageSize = 10,
+      feed_type,
+      location,
+      hashtag,
+      user_name,
+      sort_by = "createdAt",
+      sort_order = "DESC",
+      exclude_user_ids = []
+    } = req.body;
+
+    const user_id = req.authData?.user_id
+      ? Number(req.authData.user_id)
+      : null;
+
+    // No status/deleted_by_user filter — admin sees all feed
+    const filterPayload = {};
+
+    if (feed_type && feed_type !== "all") {
+      filterPayload.feed_type = feed_type;
+    }
+
+    if (location) {
+      filterPayload.location = { [Op.like]: `%${location}%` };
+    }
+
+    if (hashtag) {
+      filterPayload.hashtag = hashtag;
+    }
+
+    if (user_name) {
+      filterPayload.user_name = user_name;
+    }
+
+    const feeds = await getFeedPostsAdminservice(
+      filterPayload,
+      { page: Number(page), pageSize: Number(pageSize) },
+      Array.isArray(exclude_user_ids) ? exclude_user_ids : [],
+      [[sort_by, sort_order]],
+      user_id
+    );
+
+    return generalResponse(
+      res,
+      feeds,
+      "Feed posts retrieved successfully",
+      true,
+      false,
+      200
+    );
+  } catch (error) {
+    console.error("Error in getFeedPostsAdmin:", error);
+    return generalResponse(
+      res,
+      {},
+      "Something went wrong while fetching feed posts",
+      false,
+      true,
+      500
+    );
+  }
+}
+
 
 /**
  * Get a single feed post with details
@@ -1319,7 +1400,7 @@ async function updateFeedStatus(req, res) {
       return generalResponse(res, {}, "Status must be true or false", false, true, 400);
     }
 
-    const feed = await getFeedById(parseInt(feed_id));
+    const feed = await getFeedByIdAdmin(parseInt(feed_id));
     if (!feed) {
       return generalResponse(res, {}, "Feed not found", false, true, 404);
     }
@@ -1373,5 +1454,6 @@ module.exports = {
   reportFeedPost,
   uploadMediaS3,
   getPresignedUrl,
-  updateFeedStatus
+  updateFeedStatus,
+  getFeedPostsAdmin
 };

@@ -226,4 +226,12 @@ router.post('/get-my-feeds', authMiddleware, feed_controller.getMyFeeds);
 router.post('/report-feed', authMiddleware, feed_controller.reportFeedPost);
 router.post("/update-status", optionalAuthMiddleware, feed_controller.updateFeedStatus);
 
+ router.post("/admin/feed", optionalAuthMiddleware, feed_controller.getFeedPostsAdmin);
+
+
+
+
+
+
+
 module.exports = router;

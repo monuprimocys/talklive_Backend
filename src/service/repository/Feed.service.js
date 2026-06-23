@@ -139,6 +139,151 @@ async function getFeed(filterPayload = {}, pagination = { page: 1, pageSize: 10 
   }
 }
 
+
+async function getFeedByIdAdmin(feedId) {
+  try {
+    const feed = await Feed.findOne({
+      where: {
+        feed_id: feedId,
+      },
+      include: [
+        {
+          model: User,
+          attributes: ['user_id', 'user_name', 'full_name', 'profile_pic', 'country']
+        },
+        {
+          model: FeedMedia,
+          as: 'media',
+          attributes: ['feed_media_id', 'media_url', 'media_type', 'thumbnail_url', 'duration', 'width', 'height', 'order'],
+          order: [['order', 'ASC']]
+        },
+        {
+          model: FeedTaggedUser,
+          as: 'tagged_users',
+          include: [{
+            model: User,
+            attributes: ['user_id', 'user_name', 'full_name'],
+            foreignKey: 'tagged_user_id'
+          }]
+        }
+      ]
+    });
+    return feed;
+  } catch (error) {
+    console.error('Error fetching Feed by ID:', error);
+    throw error;
+  }
+}
+
+
+
+async function getFeedPostsAdminservice(filterPayload = {}, pagination = { page: 1, pageSize: 10 }, excludedUserIds = [], order = [['createdAt', 'DESC']], user_id) {
+  try {
+    const { page = 1, pageSize = 10 } = pagination;
+    const offset = (Number(page) - 1) * Number(pageSize);
+    const limit = Number(pageSize);
+
+    // Build where condition — no status/deleted_by_user filter for admin
+    let whereCondition = { ...filterPayload };
+
+    // Remove any status/deleted filters that leaked in from filterPayload
+    delete whereCondition.status;
+    delete whereCondition.deleted_by_user;
+
+    if (excludedUserIds.length > 0) {
+      whereCondition.user_id = { [Op.notIn]: excludedUserIds };
+    }
+
+    if (filterPayload.hashtag) {
+      delete whereCondition.hashtag;
+      const searchTag = filterPayload.hashtag.toLowerCase();
+      whereCondition[Op.and] = Sequelize.literal(`
+        EXISTS (
+          SELECT 1 FROM unnest("hashtags") AS tag 
+          WHERE LOWER(tag) LIKE '%${searchTag}%'
+        )
+      `);
+    }
+
+    let includeOptions = [];
+    if (filterPayload.user_name) {
+      delete whereCondition.user_name;
+      includeOptions = [
+        {
+          model: User,
+          where: { user_name: { [Op.like]: `%${filterPayload.user_name}%` } },
+          attributes: ['user_id', 'user_name', 'full_name', 'profile_pic'],
+          required: true
+        }
+      ];
+    } else {
+      includeOptions = [
+        {
+          model: User,
+          attributes: ['user_id', 'user_name', 'full_name', 'profile_pic']
+        }
+      ];
+    }
+
+    includeOptions.push({
+      model: FeedMedia,
+      as: 'media',
+      attributes: ['feed_media_id', 'media_url', 'media_type', 'thumbnail_url', 'duration', 'width', 'height', 'order']
+    });
+
+    const safeUserId = user_id ? Number(user_id) : 0;
+
+    const { count, rows } = await Feed.findAndCountAll({
+      where: whereCondition,
+      attributes: {
+        include: [
+          [
+            Sequelize.literal(`
+              EXISTS (
+                SELECT 1 FROM "FeedLikes" AS fl
+                WHERE fl.feed_id = "Feed"."feed_id"
+                AND fl.user_id = ${safeUserId}
+              )
+            `),
+            "is_liked"
+          ],
+          [
+            Sequelize.literal(`
+              EXISTS (
+                SELECT 1 FROM "FeedSaves" AS fs
+                WHERE fs.feed_id = "Feed"."feed_id"
+                AND fs.user_id = ${safeUserId}
+              )
+            `),
+            "is_saved"
+          ]
+        ]
+      },
+      include: includeOptions,
+      order: order,
+      offset: offset,
+      limit: limit,
+      distinct: true,
+      subQuery: false
+    });
+
+    const totalPages = Math.ceil(count / limit);
+
+    return {
+      Records: rows,
+      Pagination: {
+        total_records: count,
+        total_pages: totalPages,
+        current_page: Number(page),
+        records_per_page: limit
+      }
+    };
+  } catch (error) {
+    console.error('Error fetching Feed:', error);
+    throw error;
+  }
+}
+
 /**
  * Get a single feed post by ID with all relationships
  * @param {Number} feedId - Feed post ID
@@ -757,5 +902,7 @@ module.exports = {
   extractHashtags,
   extractMentions,
   reportFeed,
-  getFeedReports
+  getFeedReports,
+  getFeedPostsAdminservice,
+  getFeedByIdAdmin
 };

@@ -17,7 +17,6 @@ const socket_service = require("../../service/common/socket.service");
 const { updateLiveHost, getLiveLive_host } = require("../../service/repository/Live_host.service");
 const { getLive } = require("../../service/repository/Live.service");
 const { sequelize } = require("../../../models");
-const { sendCryptoWithdrawal } = require("../../service/repository/Transactions/sendCryptoWithdrawal");
 
 // recharge
 async function Money_to_coin(req, res) {
