@@ -57,8 +57,9 @@ router.post('/upload-media-in-s3', authMiddleware, upload.single('file'), modera
  *   "exclude_user_ids": [user_id1, user_id2]
  * }
  */
-router.post('/get-feed', optionalAuthMiddleware, feed_controller.getFeedPosts);
+router.post('/get-feed', authMiddleware, feed_controller.getFeedPosts);
 
+router.post('/search-feed', authMiddleware, feed_controller.searchFeeds);
 /**
  * @route   GET /api/feed/get-feed/:feed_id
  * @desc    Get a single feed post with all details

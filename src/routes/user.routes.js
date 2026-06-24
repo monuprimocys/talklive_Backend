@@ -1,6 +1,6 @@
 const express = require('express');
 const { signupUser, OtpVerification } = require('../controller/user_controller/auth.controller');
-const { updateProfile, getPresignedUrl, } = require('../controller/user_controller/updateProfile.controller');
+const { updateProfile, getPresignedUrl, getProfilePresignedUrl, } = require('../controller/user_controller/updateProfile.controller');
 const { authMiddleware } = require('../middleware/authMiddleware');
 const { findUser, get_notificationList, update_notificationList, findUser_no_auth, findUser_not_following } = require('../controller/user_controller/User.Controller');
 const router = express.Router();
@@ -20,6 +20,8 @@ router.post('/find-user-not-following', findUser_not_following);
 router.post('/get-notification-list', get_notificationList);
 router.post('/update-notification-list', update_notificationList);
 router.post('/get-presigned-url', authMiddleware, getPresignedUrl);
+router.post('/get-profile-presigned-url', getProfilePresignedUrl);
+
 
 // Admin routes
 router.post('')

@@ -30,6 +30,37 @@ async function getSocial(
     // Build the where condition
     let wherecondition = { ...socialPayload }; // Default to the provided payload
 
+    // if (socialPayload.search) {
+    //   const searchText = socialPayload.search;
+
+    //   delete wherecondition.search;
+
+    //   wherecondition[Sequelize.Op.or] = [
+    //     {
+    //       social_type: {
+    //         [Sequelize.Op.iLike]: `%${searchText}%`,
+    //       },
+    //     },
+    //     {
+    //       social_desc: {
+    //         [Sequelize.Op.iLike]: `%${searchText}%`,
+    //       },
+    //     },
+    //   ];
+    // }
+
+    if (socialPayload.search !== undefined) {
+      const searchText = socialPayload.search?.trim();
+
+      delete wherecondition.search;
+
+      if (searchText) {
+        wherecondition.social_desc = {
+          [Sequelize.Op.iLike]: `%${searchText}%`,
+        };
+      }
+    }
+
     // if (!socialPayload.user_id) {
     //   wherecondition = {
     //     ...wherecondition,
@@ -205,7 +236,13 @@ async function getSocial(
         include: [[Sequelize.literal(distanceFormula), "distance"]],
       };
 
-      order = [[Sequelize.literal("distance"), "ASC"]];
+      order = Sequelize.literal("distance ASC");
+    }
+
+    let orderClause = order;
+
+    if (order === "Random") {
+      orderClause = Sequelize.literal("RANDOM()");
     }
 
     // Add pagination options to the payload
@@ -215,7 +252,7 @@ async function getSocial(
       offset,
       include: includeoption,
       attributes,
-      order: order,
+      order: orderClause,
       distinct: true, // ✅ Fix for incorrect count with includes
     };
 

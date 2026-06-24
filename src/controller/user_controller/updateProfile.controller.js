@@ -9,6 +9,10 @@ const { getConfig } = require("../../service/repository/Project_conf.service");
 const {
   updateSocial,
 } = require("../../service/repository/SocialMedia.service");
+const {
+  uploadFileToS3,
+  getPresignedUploadUrl,
+} = require("../../service/common/s3.service");
 
 async function updateProfile(req, res) {
   try {
@@ -66,36 +70,97 @@ async function updateProfile(req, res) {
       filteredData.full_name = filteredData.first_name + filteredData.last_name;
     }
     if (pictureType != undefined && pictureType != "") {
-      if (pictureType == "id_proof") {
-        if (process.env.MEDIAFLOW == "S3") {
-          if (req.body.file_media_1)
-            filteredData.id_proof = req.body.file_media_1;
-        } else {
-          filteredData.id_proof = req.files[0].path;
+      // if (pictureType == "id_proof") {
+      //   if (process.env.MEDIAFLOW == "S3") {
+      //     if (req.body.file_media_1)
+      //       filteredData.id_proof = req.body.file_media_1;
+      //   } else {
+      //     filteredData.id_proof = req.files[0].path;
+      //   }
+      // }
+      // if (pictureType == "selfie") {
+      //   if (process.env.MEDIAFLOW == "S3") {
+      //     if (req.body.file_media_1)
+      //       filteredData.selfie = req.body.file_media_1;
+      //   } else {
+      //     filteredData.selfie = req.files[0].path;
+      //   }
+      // }
+      // if (pictureType == "profile_pic") {
+      //   if (process.env.MEDIAFLOW == "S3") {
+      //     if (!req.body.file_media_1) {
+      //       return generalResponse(
+      //         res,
+      //         { success: false },
+      //         "file_media_1 is required",
+      //         false,
+      //         true,
+      //       );
+      //     }
+      //     filteredData.profile_pic = req.body.file_media_1;
+      //   } else {
+      //     filteredData.profile_pic = req.files[0].path;
+      //   }
+      // }
+
+      if (process.env.MEDIAFLOW === "S3") {
+        const mediaUrl = req.body.file_media_1;
+
+        switch (pictureType) {
+          case "profile_pic":
+            if (!mediaUrl) {
+              return generalResponse(
+                res,
+                {},
+                "file_media_1 is required",
+                false,
+                true,
+              );
+            }
+            filteredData.profile_pic = mediaUrl;
+            break;
+
+          case "selfie":
+            if (!mediaUrl) {
+              return generalResponse(
+                res,
+                {},
+                "file_media_1 is required",
+                false,
+                true,
+              );
+            }
+            filteredData.selfie = mediaUrl;
+            break;
+
+          case "id_proof":
+            if (!mediaUrl) {
+              return generalResponse(
+                res,
+                {},
+                "file_media_1 is required",
+                false,
+                true,
+              );
+            }
+            filteredData.id_proof = mediaUrl;
+            break;
         }
-      }
-      if (pictureType == "selfie") {
-        if (process.env.MEDIAFLOW == "S3") {
-          if (req.body.file_media_1)
-            filteredData.selfie = req.body.file_media_1;
-        } else {
-          filteredData.selfie = req.files[0].path;
-        }
-      }
-      if (pictureType == "profile_pic") {
-        if (process.env.MEDIAFLOW == "S3") {
-          if (!req.body.file_media_1) {
-            return generalResponse(
-              res,
-              { success: false },
-              "file_media_1 is required",
-              false,
-              true,
-            );
+      } else {
+        if (req.files?.length) {
+          switch (pictureType) {
+            case "profile_pic":
+              filteredData.profile_pic = req.files[0].path;
+              break;
+
+            case "selfie":
+              filteredData.selfie = req.files[0].path;
+              break;
+
+            case "id_proof":
+              filteredData.id_proof = req.files[0].path;
+              break;
           }
-          filteredData.profile_pic = req.body.file_media_1;
-        } else {
-          filteredData.profile_pic = req.files[0].path;
         }
       }
       if (pictureType == "avatar") {
@@ -349,15 +414,67 @@ async function updateProfileAdmin(req, res) {
 
 async function getPresignedUrl(req, res) {
   try {
-    const {
-      file_type = "thumb",
-      mime_type = "image/jpeg",
-      folder_path = "reelboost/profile",
-    } = req.body;
+    const { file_type, mime_type, original_name } = req.body;
+
+    let folderPath = "reelboost/profile";
+
+    if (file_type === "image") {
+      folderPath = "reelboost/profile";
+    } else if (file_type === "selfie") {
+      folderPath = "reelboost/selfie";
+    } else if (file_type === "id_proof") {
+      folderPath = "reelboost/id_proof";
+    }
+
+    console.log(
+      "Profile Presigned URL Request:",
+      file_type,
+      mime_type,
+      folderPath,
+    );
 
     const result = await getPresignedUploadUrl(
-      folder_path,
+      folderPath,
       file_type,
+      mime_type,
+      original_name,
+    );
+
+    console.log("Profile Presigned URL Result:", result);
+
+    return generalResponse(
+      res,
+      {
+        presigned_url: result.presignedUrl,
+        file_url: result.fileUrl,
+        key: result.key,
+        file_name: result.fileName,
+      },
+      "Profile Presigned URL generated successfully",
+      true,
+      true,
+    );
+  } catch (error) {
+    console.error("Profile Presigned URL Error:", error);
+
+    return generalResponse(
+      res,
+      {},
+      "Something went wrong while generating profile presigned URL!",
+      false,
+      true,
+    );
+  }
+}
+
+
+async function getProfilePresignedUrl(req, res) {
+  try {
+    const { mime_type = "image/jpeg" } = req.body;
+
+    const result = await getPresignedUploadUrl(
+      "reelboost/profile",
+      "image",
       mime_type,
     );
 
@@ -374,19 +491,14 @@ async function getPresignedUrl(req, res) {
       true,
     );
   } catch (error) {
-    console.error("Error generating presigned URL:", error);
-    return generalResponse(
-      res,
-      { success: false },
-      "Something went wrong while generating presigned URL!",
-      false,
-      true,
-    );
+    console.error(error);
+    return generalResponse(res, {}, "Failed to generate URL", false, true);
   }
 }
 
-  module.exports = {
-    updateProfile,
-    updateProfileAdmin,
-    getPresignedUrl,
-  };
+module.exports = {
+  updateProfile,
+  updateProfileAdmin,
+  getPresignedUrl,
+  getProfilePresignedUrl,
+};

@@ -24,10 +24,10 @@ async function uploadReportSocial(req, res) {
         }
 
         if (req.body?.report_type_id == 0) {
-            allowedUpdateFieldsMandatory = ['social_id', 'report_text']
+            allowedUpdateFieldsMandatory = ['social_id', 'report_text', 'report_type']
         }
         else {
-            allowedUpdateFieldsMandatory = ['social_id', 'report_type_id']
+            allowedUpdateFieldsMandatory = ['social_id', 'report_type', 'report_text']
         }
         try {
             filteredData = updateFieldsFilter(req.body, allowedUpdateFieldsMandatory, true);

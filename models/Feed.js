@@ -6,84 +6,94 @@ module.exports = (sequelize, DataTypes) => {
       primaryKey: true,
       autoIncrement: true,
     },
-   feed_type: {
-  type: DataTypes.STRING,
-  allowNull: false,
-  defaultValue: 'text',
-  validate: {
-    isIn: [['text', 'text_image', 'text_video', 'image_only', 'video_only']]
-  }
-},
+    feed_type: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: "text",
+      validate: {
+        isIn: [
+          ["text", "text_image", "text_video", "image_only", "video_only"],
+        ],
+      },
+    },
     content: {
       type: DataTypes.TEXT,
       allowNull: true,
-      defaultValue: '',
-      comment: 'Text content of the feed post',
+      defaultValue: "",
+      comment: "Text content of the feed post",
     },
     location: {
       type: DataTypes.STRING,
       allowNull: true,
-      defaultValue: '',
-      comment: 'Location information for the feed post',
+      defaultValue: "",
+      comment: "Location information for the feed post",
     },
     hashtags: {
       type: DataTypes.ARRAY(DataTypes.STRING),
       allowNull: true,
       defaultValue: [],
-      comment: 'Array of hashtags in the content',
+      comment: "Array of hashtags in the content",
     },
     mentioned_users: {
       type: DataTypes.ARRAY(DataTypes.INTEGER),
       allowNull: true,
       defaultValue: [],
-      comment: 'Array of user IDs mentioned in the post (@user)',
+      comment: "Array of user IDs mentioned in the post (@user)",
     },
     allow_comments: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true,
-      comment: 'Toggle to allow/disallow comments on this post',
+      comment: "Toggle to allow/disallow comments on this post",
     },
     total_likes: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      comment: 'Total number of likes on this feed post',
+      comment: "Total number of likes on this feed post",
     },
     total_comments: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      comment: 'Total number of comments on this feed post',
+      comment: "Total number of comments on this feed post",
     },
     total_shares: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      comment: 'Total number of shares of this feed post',
+      comment: "Total number of shares of this feed post",
     },
     total_saves: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      comment: 'Total number of saves of this feed post',
+      comment: "Total number of saves of this feed post",
     },
     status: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true,
-      comment: 'Post visibility status (active/inactive)',
+      comment: "Post visibility status (active/inactive)",
     },
     deleted_by_user: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
-      comment: 'Soft delete flag',
+      comment: "Soft delete flag",
     },
     deleted_at: {
       type: DataTypes.DATE,
       allowNull: true,
-      comment: 'Timestamp when post was deleted',
+      comment: "Timestamp when post was deleted",
+    },
+    latitude: {
+      type: DataTypes.DECIMAL(10, 8),
+      allowNull: true,
+    },
+    longitude: {
+      type: DataTypes.DECIMAL(11, 8),
+      allowNull: true,
     },
   });
 
@@ -93,7 +103,7 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: "user_id",
       allowNull: false,
       defaultValue: 0,
-      onDelete: 'CASCADE'
+      onDelete: "CASCADE",
     });
 
     // Feed can have multiple media files (images/videos)
@@ -101,8 +111,8 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: "feed_id",
       allowNull: false,
       defaultValue: 0,
-      onDelete: 'CASCADE',
-      as: 'media'
+      onDelete: "CASCADE",
+      as: "media",
     });
 
     // Feed can have multiple likes
@@ -110,7 +120,7 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: "feed_id",
       allowNull: true,
       defaultValue: 0,
-      onDelete: 'CASCADE'
+      onDelete: "CASCADE",
     });
 
     // Feed can have multiple comments
@@ -118,7 +128,7 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: "feed_id",
       allowNull: false,
       defaultValue: 0,
-      onDelete: 'CASCADE'
+      onDelete: "CASCADE",
     });
 
     // Feed can have multiple saves
@@ -126,7 +136,7 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: "feed_id",
       allowNull: true,
       defaultValue: 0,
-      onDelete: 'CASCADE'
+      onDelete: "CASCADE",
     });
 
     // Feed can have tagged users
@@ -134,8 +144,8 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: "feed_id",
       allowNull: true,
       defaultValue: 0,
-      onDelete: 'CASCADE',
-      as: 'tagged_users'
+      onDelete: "CASCADE",
+      as: "tagged_users",
     });
 
     // Feed can have multiple reports
@@ -143,7 +153,7 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: "feed_id",
       allowNull: true,
       defaultValue: 0,
-      onDelete: 'CASCADE'
+      onDelete: "CASCADE",
     });
   };
 

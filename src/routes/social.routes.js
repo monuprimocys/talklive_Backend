@@ -19,5 +19,6 @@ router.post('/get-social-of-followers', social_controller.getSocialsOfFollowers)
 router.post('/delete-social', social_controller.deleteSocials);
 router.post('/add-views', social_controller.addViews);
 router.post('/edit-social', social_controller.editSocial);
+router.post('/search-social', social_controller.searchSocials);
 
 module.exports = router;

@@ -16,18 +16,7 @@ const { User, Message, Social } = require("../../../models");
 const filterData = require("../../helper/filter.helper");
 const { sendPushNotification } = require("../../service/common/onesignal.service");
 
-// Paid communication services
-const BalanceValidator = require("../../service/payment/balance-validator.service");
-const { uploadFileToS3 } = require("../../service/common/s3.service");
-const CoinsService = require("../../service/payment/coins.service");
-
 async function sendMessage(req, res) {
-  const getFile = (fieldname, index) => {
-    if (!req.files) return null;
-    const file = req.files.find(f => f.fieldname === fieldname);
-    return file || req.files[index];
-  };
-
   try {
     const user_id = req.authData.user_id;
     const glob_user = await getUser({ user_id: user_id });
@@ -56,7 +45,7 @@ async function sendMessage(req, res) {
         true
       );
       filteredDataPayload = { ...filteredData, ...filteredDataMadatary };
-      if (filteredDataPayload.message_type == "social" && !req.body.is_forwarded) {
+      if (filteredDataPayload.message_type == "social") {
         const isSocial = await social_service.getSocial({
           social_id: filteredDataPayload.social_id,
         });
@@ -70,62 +59,84 @@ async function sendMessage(req, res) {
           isSocial.Records[0].reel_thumbnail;
       }
 
-      if (filteredDataPayload.message_type === "image" && !req.body.is_forwarded) {
+      if (filteredDataPayload.message_type === "image") {
         if (process.env.MEDIAFLOW == "S3") {
-          if (req.files && req.files.length > 0) {
-            // Backend handles S3 upload
-            filteredDataPayload.message_content = await uploadFileToS3(getFile("file_media_1", 0), "chat/images");
-          } else if (req.body.file_media_1) {
-            // Frontend already uploaded to S3
-            filteredDataPayload.message_content = req.body.file_media_1;
-          } else {
-            return generalResponse(res, { success: false }, "Image file or URL is required", false, true);
+          if (!req.body.file_media_1) {
+            return generalResponse(
+              res,
+              { success: false },
+              "file_media_1 is required",
+              false,
+              true
+            )
           }
-        } else {
+          filteredDataPayload.message_content = req.body.file_media_1;
+
+        }
+        else {
+
           filteredDataPayload.message_content = req.files[0].path;
         }
       }
-      if (filteredDataPayload.message_type === "video" && !req.body.is_forwarded) {
+      if (filteredDataPayload.message_type === "video") {
         if (process.env.MEDIAFLOW == "S3") {
-          if (req.files && req.files.length >= 2) {
-            // Backend handles S3 upload for both thumbnail and video
-            filteredDataPayload.message_thumbnail = await uploadFileToS3(getFile("file_media_1", 0), "chat/thumbnails");
-            filteredDataPayload.message_content = await uploadFileToS3(getFile("file_media_2", 1), "chat/videos");
-          } else if (req.body.file_media_1 && req.body.file_media_2) {
-            // Frontend already uploaded to S3
-            filteredDataPayload.message_thumbnail = req.body.file_media_1;
-            filteredDataPayload.message_content = req.body.file_media_2;
-          } else {
-            return generalResponse(res, { success: false }, "Video and thumbnail files or URLs are required", false, true);
+          if (!req.body.file_media_1 || !req.body.file_media_2) {
+            return generalResponse(
+              res,
+              { success: false },
+              "file_media_1 and file_media_2 are required",
+              false,
+              true
+            )
           }
-        } else {
+
+
+          filteredDataPayload.message_thumbnail = req.body.file_media_1;
+          filteredDataPayload.message_content = req.body.file_media_2;
+        }
+        else {
+
           filteredDataPayload.message_thumbnail = req.files[0].path;
           filteredDataPayload.message_content = req.files[1].path;
         }
+
+
       }
-      if (filteredDataPayload.message_type === "gif" && !req.body.is_forwarded) {
+      if (filteredDataPayload.message_type === "gif") {
         if (process.env.MEDIAFLOW == "S3") {
-          if (req.files && req.files.length > 0) {
-            filteredDataPayload.message_content = await uploadFileToS3(getFile("file_media_1", 0), "chat/gifs");
-          } else if (req.body.file_media_1) {
-            filteredDataPayload.message_content = req.body.file_media_1;
-          } else {
-            return generalResponse(res, { success: false }, "GIF file or URL is required", false, true);
+          if (!req.body.file_media_1) {
+            return generalResponse(
+              res,
+              { success: false },
+              "file_media_1 is required",
+              false,
+              true
+            )
           }
-        } else {
+          filteredDataPayload.message_content = req.body.file_media_1;
+
+        }
+        else {
+
           filteredDataPayload.message_content = req.files[0].path;
         }
       }
-      if (filteredDataPayload.message_type === "doc" && !req.body.is_forwarded) {
+      if (filteredDataPayload.message_type === "doc") {
         if (process.env.MEDIAFLOW == "S3") {
-          if (req.files && req.files.length > 0) {
-            filteredDataPayload.message_content = await uploadFileToS3(getFile("file_media_1", 0), "chat/documents");
-          } else if (req.body.file_media_1) {
-            filteredDataPayload.message_content = req.body.file_media_1;
-          } else {
-            return generalResponse(res, { success: false }, "Document file or URL is required", false, true);
+          if (!req.body.file_media_1) {
+            return generalResponse(
+              res,
+              { success: false },
+              "file_media_1 is required",
+              false,
+              true
+            )
           }
-        } else {
+          filteredDataPayload.message_content = req.body.file_media_1;
+
+        }
+        else {
+
           filteredDataPayload.message_content = req.files[0].path;
         }
       }
@@ -217,72 +228,6 @@ async function sendMessage(req, res) {
         ],
       },
     ];
-
-
-
-    // ==================== PAID MESSAGE CHECK ====================
-    // Determine the recipient user_id
-    let recipient_id = filteredDataPayload.user_id || null;
-
-    // If no direct user_id, try to get from chat_id
-    if (!recipient_id && filteredDataPayload.chat_id) {
-      const chatParticipants = await participant_service.getParticipantWithoutPagenation({
-        chat_id: filteredDataPayload.chat_id,
-      });
-
-      if (chatParticipants && chatParticipants.Records) {
-        for (const participant of chatParticipants.Records) {
-          if (participant.user_id !== user_id) {
-            recipient_id = participant.user_id;
-            break;
-          }
-        }
-      }
-    }
-
-    // Check if message is paid (based on recipient pricing)
-    let isPaidMessage = false;
-    let messagePrice = 0;
-    let coinDeductionResult = null;
-
-    if (recipient_id && recipient_id !== user_id) {
-      // Validate recipient pricing
-      const pricingValidation = await BalanceValidator.validateRecipientPricing(
-        recipient_id,
-        "MESSAGE"
-      );
-
-      if (pricingValidation.isPricingEnabled) {
-        isPaidMessage = true;
-        messagePrice = pricingValidation.price;
-
-        // Check sender's balance
-        const balanceValidation = await BalanceValidator.validateBalance(
-          user_id,
-          messagePrice
-        );
-
-        if (!balanceValidation.hasBalance) {
-          return generalResponse(
-            res,
-            {
-              success: false,
-              error_code: "INSUFFICIENT_COINS",
-              required_coins: messagePrice,
-              available_coins: balanceValidation.available_coins,
-              short_by: balanceValidation.coins_short,
-            },
-            balanceValidation.message,
-            false,
-            true,
-            200
-          );
-        }
-      }
-    }
-    // ==================== END PAID MESSAGE CHECK ====================
-
-
     const foreignKeysConfig = [
       {
         foreign_key: "social_id",
@@ -290,49 +235,6 @@ async function sendMessage(req, res) {
         alias_name: "Social",
       },
     ];
-
-    // ==================== PROCESS PAID MESSAGE ====================
-    if (isPaidMessage && recipient_id && messagePrice > 0) {
-      const coinDeductionResult = await CoinsService.deductCoins(
-        user_id,
-        recipient_id,
-        messagePrice,
-        "MESSAGE",
-        {
-          description: `Message from user ${user_id}`,
-        }
-      );
-
-      if (!coinDeductionResult.success) {
-        return generalResponse(
-          res,
-          {
-            success: false,
-            error_code: coinDeductionResult.error_code || "DEDUCTION_FAILED",
-          },
-          coinDeductionResult.message || "Failed to process payment for message",
-          false,
-          true,
-          400
-        );
-      }
-
-      // ✅ Emit balance updates to both users
-      const sender = await getUser({ user_id: user_id });
-      const recipient = await getUser({ user_id: recipient_id });
-
-      if (sender) {
-        socket_service.emitEvent(sender.socket_id, "balance_update", {
-          available_coins: sender.available_coins,
-        });
-      }
-      if (recipient) {
-        socket_service.emitEvent(recipient.socket_id, "balance_update", {
-          available_coins: recipient.available_coins,
-        });
-      }
-    }
-    // ==================== END PROCESS PAID MESSAGE ====================
 
     filteredDataPayload.sender_id = user_id;
     const newMessage = await message_service.createMessage(filteredDataPayload);
@@ -605,20 +507,9 @@ async function sendMessage(req, res) {
       }
       // Reciver Logic
 
-      // ==================== BUILD RESPONSE WITH PAYMENT INFO ====================
-      const responseData = {
-        ...newMessage.toJSON(),
-        payment_info: {
-          is_paid_message: isPaidMessage,
-          coins_deducted: isPaidMessage ? messagePrice : 0,
-          currency: "coins"
-        }
-      };
-      // ==================== END RESPONSE WITH PAYMENT INFO ====================
-
       return generalResponse(
         res,
-        responseData,
+        newMessage,
         "Message sent Successfully !!",
         true,
         true

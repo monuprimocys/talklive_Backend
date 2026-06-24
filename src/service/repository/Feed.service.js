@@ -1,5 +1,15 @@
-const { Op, Sequelize } = require('sequelize');
-const { Feed, FeedMedia, FeedLike, FeedComment, FeedSave, FeedTaggedUser, FeedReport, User, FeedCommentLike } = require("../../../models");
+const { Op, Sequelize } = require("sequelize");
+const {
+  Feed,
+  FeedMedia,
+  FeedLike,
+  FeedComment,
+  FeedSave,
+  FeedTaggedUser,
+  FeedReport,
+  User,
+  FeedCommentLike,
+} = require("../../../models");
 
 /**
  * Create a new feed post
@@ -11,7 +21,7 @@ async function createFeed(feedPayload) {
     const newFeed = await Feed.create(feedPayload);
     return newFeed;
   } catch (error) {
-    console.error('Error creating Feed:', error);
+    console.error("Error creating Feed:", error);
     throw error;
   }
 }
@@ -24,7 +34,15 @@ async function createFeed(feedPayload) {
  * @param {Array} order - Sort order
  * @returns {Promise<Object>} Feed posts with pagination info
  */
-async function getFeed(filterPayload = {}, pagination = { page: 1, pageSize: 10 }, excludedUserIds = [], order = [['createdAt', 'DESC']], user_id) {
+async function getFeedold(
+  filterPayload = {},
+  pagination = { page: 1, pageSize: 10 },
+  excludedUserIds = [],
+  order = [["createdAt", "DESC"]],
+  user_id,
+  latitude = null,
+  longitude = null,
+) {
   try {
     const { page = 1, pageSize = 10 } = pagination;
     const offset = (Number(page) - 1) * Number(pageSize);
@@ -34,13 +52,13 @@ async function getFeed(filterPayload = {}, pagination = { page: 1, pageSize: 10 
     let whereCondition = {
       ...filterPayload,
       deleted_by_user: false,
-      status: true
+      status: true,
     };
 
     // Exclude specific users if provided
     if (excludedUserIds.length > 0) {
       whereCondition.user_id = {
-        [Op.notIn]: excludedUserIds
+        [Op.notIn]: excludedUserIds,
       };
     }
 
@@ -65,27 +83,36 @@ async function getFeed(filterPayload = {}, pagination = { page: 1, pageSize: 10 
           model: User,
           where: {
             user_name: {
-              [Op.like]: `%${filterPayload.user_name}%`
-            }
+              [Op.like]: `%${filterPayload.user_name}%`,
+            },
           },
-          attributes: ['user_id', 'user_name', 'full_name', 'profile_pic'],
-          required: true
-        }
+          attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+          required: true,
+        },
       ];
     } else {
       includeOptions = [
         {
           model: User,
-          attributes: ['user_id', 'user_name', 'full_name', 'profile_pic']
-        }
+          attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+        },
       ];
     }
 
     // Include media, likes count, comments count
     includeOptions.push({
       model: FeedMedia,
-      as: 'media',
-      attributes: ['feed_media_id', 'media_url', 'media_type', 'thumbnail_url', 'duration', 'width', 'height', 'order']
+      as: "media",
+      attributes: [
+        "feed_media_id",
+        "media_url",
+        "media_type",
+        "thumbnail_url",
+        "duration",
+        "width",
+        "height",
+        "order",
+      ],
     });
 
     const { count, rows } = await Feed.findAndCountAll({
@@ -100,7 +127,7 @@ async function getFeed(filterPayload = {}, pagination = { page: 1, pageSize: 10 
             AND fl.user_id = ${Number(user_id)}
           )
         `),
-            "is_liked"
+            "is_liked",
           ],
           [
             Sequelize.literal(`
@@ -110,16 +137,16 @@ async function getFeed(filterPayload = {}, pagination = { page: 1, pageSize: 10 
             AND fs.user_id = ${Number(user_id)}
           )
         `),
-            "is_saved"
-          ]
-        ]
+            "is_saved",
+          ],
+        ],
       },
       include: includeOptions,
       order: order,
       offset: offset,
       limit: limit,
       distinct: true,
-      subQuery: false
+      subQuery: false,
     });
 
     const totalPages = Math.ceil(count / limit);
@@ -130,15 +157,224 @@ async function getFeed(filterPayload = {}, pagination = { page: 1, pageSize: 10 
         total_records: count,
         total_pages: totalPages,
         current_page: Number(page),
-        records_per_page: limit
-      }
+        records_per_page: limit,
+      },
     };
   } catch (error) {
-    console.error('Error fetching Feed:', error);
+    console.error("Error fetching Feed:", error);
     throw error;
   }
 }
 
+async function getFeed(
+  filterPayload = {},
+  pagination = { page: 1, pageSize: 10 },
+  excludedUserIds = [],
+  order = [["createdAt", "DESC"]],
+  user_id,
+  latitude = null,
+  longitude = null,
+) {
+  try {
+    const { page = 1, pageSize = 10 } = pagination;
+    const offset = (Number(page) - 1) * Number(pageSize);
+    const limit = Number(pageSize);
+
+    let whereCondition = {
+      ...filterPayload,
+      deleted_by_user: false,
+      status: true,
+    };
+
+    if (filterPayload.search !== undefined) {
+      const searchText = filterPayload.search?.trim();
+
+      delete whereCondition.search;
+
+      if (searchText) {
+        whereCondition.content = {
+          [Sequelize.Op.iLike]: `%${searchText}%`,
+        };
+      }
+    }
+
+    /* ---------------- FOLLOWING FILTER ---------------- */
+
+    if (filterPayload.user_id && Array.isArray(filterPayload.user_id)) {
+      whereCondition.user_id = {
+        [Op.in]: filterPayload.user_id,
+      };
+
+      if (excludedUserIds.length > 0) {
+        whereCondition.user_id = {
+          [Op.in]: filterPayload.user_id.filter(
+            (id) => !excludedUserIds.includes(id),
+          ),
+        };
+      }
+    } else if (excludedUserIds.length > 0) {
+      whereCondition.user_id = {
+        [Op.notIn]: excludedUserIds,
+      };
+    }
+
+    /* ---------------- HASHTAG SEARCH ---------------- */
+
+    if (filterPayload.hashtag) {
+      delete whereCondition.hashtag;
+
+      const searchTag = filterPayload.hashtag.toString().toLowerCase();
+
+      whereCondition[Op.and] = Sequelize.literal(`
+    EXISTS (
+      SELECT 1
+      FROM unnest("hashtags") AS tag
+      WHERE LOWER(tag) LIKE '%${searchTag}%'
+    )
+  `);
+    }
+
+    /* ---------------- USER SEARCH ---------------- */
+
+    let includeOptions = [];
+
+    if (filterPayload.user_name) {
+      delete whereCondition.user_name;
+
+      includeOptions.push({
+        model: User,
+        where: {
+          user_name: {
+            [Op.like]: `%${filterPayload.user_name}%`,
+          },
+        },
+        attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+        required: true,
+      });
+    } else {
+      includeOptions.push({
+        model: User,
+        attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+      });
+    }
+
+    /* ---------------- MEDIA ---------------- */
+
+    includeOptions.push({
+      model: FeedMedia,
+      as: "media",
+      attributes: [
+        "feed_media_id",
+        "media_url",
+        "media_type",
+        "thumbnail_url",
+        "duration",
+        "width",
+        "height",
+        "order",
+      ],
+    });
+
+    /* ---------------- NEARBY ---------------- */
+
+    let distanceLiteral = null;
+
+    if (
+      order === "Nearby" &&
+      latitude !== null &&
+      latitude !== undefined &&
+      longitude !== null &&
+      longitude !== undefined
+    ) {
+      whereCondition.latitude = {
+        [Op.ne]: null,
+      };
+
+      whereCondition.longitude = {
+        [Op.ne]: null,
+      };
+
+      distanceLiteral = Sequelize.literal(`
+    (
+      6371 * acos(
+        cos(radians(${latitude}))
+        * cos(radians("Feed"."latitude"))
+        * cos(
+            radians("Feed"."longitude")
+            - radians(${longitude})
+          )
+        + sin(radians(${latitude}))
+        * sin(radians("Feed"."latitude"))
+      )
+    )
+  `);
+
+      order = [[distanceLiteral, "ASC"]];
+    }
+
+    const attributesInclude = [
+      [
+        Sequelize.literal(`
+      EXISTS (
+        SELECT 1
+        FROM "FeedLikes" fl
+        WHERE fl.feed_id = "Feed"."feed_id"
+        AND fl.user_id = ${Number(user_id || 0)}
+      )
+    `),
+        "is_liked",
+      ],
+      [
+        Sequelize.literal(`
+      EXISTS (
+        SELECT 1
+        FROM "FeedSaves" fs
+        WHERE fs.feed_id = "Feed"."feed_id"
+        AND fs.user_id = ${Number(user_id || 0)}
+      )
+    `),
+        "is_saved",
+      ],
+    ];
+
+    if (distanceLiteral) {
+      attributesInclude.push([distanceLiteral, "distance"]);
+    }
+
+    const { count, rows } = await Feed.findAndCountAll({
+      where: whereCondition,
+
+      attributes: {
+        include: attributesInclude,
+      },
+
+      include: includeOptions,
+
+      order,
+
+      offset,
+      limit,
+
+      distinct: true,
+      subQuery: false,
+    });
+
+    const totalPages = Math.ceil(count / limit);
+
+    return {
+      Records: rows,
+      Pagination: {
+        total_records: count,
+        total_pages: totalPages,
+        current_page: Number(page),
+        records_per_page: limit,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching Feed:", error);
+    throw error;
+  }
+}
 
 async function getFeedByIdAdmin(feedId) {
   try {
@@ -149,35 +385,56 @@ async function getFeedByIdAdmin(feedId) {
       include: [
         {
           model: User,
-          attributes: ['user_id', 'user_name', 'full_name', 'profile_pic', 'country']
+          attributes: [
+            "user_id",
+            "user_name",
+            "full_name",
+            "profile_pic",
+            "country",
+          ],
         },
         {
           model: FeedMedia,
-          as: 'media',
-          attributes: ['feed_media_id', 'media_url', 'media_type', 'thumbnail_url', 'duration', 'width', 'height', 'order'],
-          order: [['order', 'ASC']]
+          as: "media",
+          attributes: [
+            "feed_media_id",
+            "media_url",
+            "media_type",
+            "thumbnail_url",
+            "duration",
+            "width",
+            "height",
+            "order",
+          ],
+          order: [["order", "ASC"]],
         },
         {
           model: FeedTaggedUser,
-          as: 'tagged_users',
-          include: [{
-            model: User,
-            attributes: ['user_id', 'user_name', 'full_name'],
-            foreignKey: 'tagged_user_id'
-          }]
-        }
-      ]
+          as: "tagged_users",
+          include: [
+            {
+              model: User,
+              attributes: ["user_id", "user_name", "full_name"],
+              foreignKey: "tagged_user_id",
+            },
+          ],
+        },
+      ],
     });
     return feed;
   } catch (error) {
-    console.error('Error fetching Feed by ID:', error);
+    console.error("Error fetching Feed by ID:", error);
     throw error;
   }
 }
 
-
-
-async function getFeedPostsAdminservice(filterPayload = {}, pagination = { page: 1, pageSize: 10 }, excludedUserIds = [], order = [['createdAt', 'DESC']], user_id) {
+async function getFeedPostsAdminservice(
+  filterPayload = {},
+  pagination = { page: 1, pageSize: 10 },
+  excludedUserIds = [],
+  order = [["createdAt", "DESC"]],
+  user_id,
+) {
   try {
     const { page = 1, pageSize = 10 } = pagination;
     const offset = (Number(page) - 1) * Number(pageSize);
@@ -212,23 +469,32 @@ async function getFeedPostsAdminservice(filterPayload = {}, pagination = { page:
         {
           model: User,
           where: { user_name: { [Op.like]: `%${filterPayload.user_name}%` } },
-          attributes: ['user_id', 'user_name', 'full_name', 'profile_pic'],
-          required: true
-        }
+          attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+          required: true,
+        },
       ];
     } else {
       includeOptions = [
         {
           model: User,
-          attributes: ['user_id', 'user_name', 'full_name', 'profile_pic']
-        }
+          attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+        },
       ];
     }
 
     includeOptions.push({
       model: FeedMedia,
-      as: 'media',
-      attributes: ['feed_media_id', 'media_url', 'media_type', 'thumbnail_url', 'duration', 'width', 'height', 'order']
+      as: "media",
+      attributes: [
+        "feed_media_id",
+        "media_url",
+        "media_type",
+        "thumbnail_url",
+        "duration",
+        "width",
+        "height",
+        "order",
+      ],
     });
 
     const safeUserId = user_id ? Number(user_id) : 0;
@@ -245,7 +511,7 @@ async function getFeedPostsAdminservice(filterPayload = {}, pagination = { page:
                 AND fl.user_id = ${safeUserId}
               )
             `),
-            "is_liked"
+            "is_liked",
           ],
           [
             Sequelize.literal(`
@@ -255,16 +521,16 @@ async function getFeedPostsAdminservice(filterPayload = {}, pagination = { page:
                 AND fs.user_id = ${safeUserId}
               )
             `),
-            "is_saved"
-          ]
-        ]
+            "is_saved",
+          ],
+        ],
       },
       include: includeOptions,
       order: order,
       offset: offset,
       limit: limit,
       distinct: true,
-      subQuery: false
+      subQuery: false,
     });
 
     const totalPages = Math.ceil(count / limit);
@@ -275,11 +541,11 @@ async function getFeedPostsAdminservice(filterPayload = {}, pagination = { page:
         total_records: count,
         total_pages: totalPages,
         current_page: Number(page),
-        records_per_page: limit
-      }
+        records_per_page: limit,
+      },
     };
   } catch (error) {
-    console.error('Error fetching Feed:', error);
+    console.error("Error fetching Feed:", error);
     throw error;
   }
 }
@@ -295,33 +561,50 @@ async function getFeedById(feedId) {
       where: {
         feed_id: feedId,
         deleted_by_user: false,
-        status: true
+        status: true,
       },
       include: [
         {
           model: User,
-          attributes: ['user_id', 'user_name', 'full_name', 'profile_pic', 'country']
+          attributes: [
+            "user_id",
+            "user_name",
+            "full_name",
+            "profile_pic",
+            "country",
+          ],
         },
         {
           model: FeedMedia,
-          as: 'media',
-          attributes: ['feed_media_id', 'media_url', 'media_type', 'thumbnail_url', 'duration', 'width', 'height', 'order'],
-          order: [['order', 'ASC']]
+          as: "media",
+          attributes: [
+            "feed_media_id",
+            "media_url",
+            "media_type",
+            "thumbnail_url",
+            "duration",
+            "width",
+            "height",
+            "order",
+          ],
+          order: [["order", "ASC"]],
         },
         {
           model: FeedTaggedUser,
-          as: 'tagged_users',
-          include: [{
-            model: User,
-            attributes: ['user_id', 'user_name', 'full_name'],
-            foreignKey: 'tagged_user_id'
-          }]
-        }
-      ]
+          as: "tagged_users",
+          include: [
+            {
+              model: User,
+              attributes: ["user_id", "user_name", "full_name"],
+              foreignKey: "tagged_user_id",
+            },
+          ],
+        },
+      ],
     });
     return feed;
   } catch (error) {
-    console.error('Error fetching Feed by ID:', error);
+    console.error("Error fetching Feed by ID:", error);
     throw error;
   }
 }
@@ -337,7 +620,7 @@ async function updateFeed(updateData, where) {
     const result = await Feed.update(updateData, { where });
     return result;
   } catch (error) {
-    console.error('Error updating Feed:', error);
+    console.error("Error updating Feed:", error);
     throw error;
   }
 }
@@ -353,13 +636,13 @@ async function deleteFeed(feedId) {
       {
         deleted_by_user: true,
         deleted_at: new Date(),
-        status: false
+        status: false,
       },
-      { where: { feed_id: feedId } }
+      { where: { feed_id: feedId } },
     );
     return result;
   } catch (error) {
-    console.error('Error deleting Feed:', error);
+    console.error("Error deleting Feed:", error);
     throw error;
   }
 }
@@ -374,7 +657,7 @@ async function addFeedMedia(mediaPayload) {
     const media = await FeedMedia.create(mediaPayload);
     return media;
   } catch (error) {
-    console.error('Error adding Feed Media:', error);
+    console.error("Error adding Feed Media:", error);
     throw error;
   }
 }
@@ -389,7 +672,7 @@ async function addFeedLike(feedId, userId) {
   try {
     // Check if already liked
     const existingLike = await FeedLike.findOne({
-      where: { feed_id: feedId, user_id: userId }
+      where: { feed_id: feedId, user_id: userId },
     });
 
     if (existingLike) {
@@ -398,17 +681,17 @@ async function addFeedLike(feedId, userId) {
 
     const like = await FeedLike.create({
       feed_id: feedId,
-      user_id: userId
+      user_id: userId,
     });
 
     // Increment total_likes count
-    await Feed.increment('total_likes', {
-      where: { feed_id: feedId }
+    await Feed.increment("total_likes", {
+      where: { feed_id: feedId },
     });
 
     return like;
   } catch (error) {
-    console.error('Error adding Feed Like:', error);
+    console.error("Error adding Feed Like:", error);
     throw error;
   }
 }
@@ -422,19 +705,19 @@ async function addFeedLike(feedId, userId) {
 async function removeFeedLike(feedId, userId) {
   try {
     const result = await FeedLike.destroy({
-      where: { feed_id: feedId, user_id: userId }
+      where: { feed_id: feedId, user_id: userId },
     });
 
     // Decrement total_likes count if deleted
     if (result > 0) {
-      await Feed.decrement('total_likes', {
-        where: { feed_id: feedId }
+      await Feed.decrement("total_likes", {
+        where: { feed_id: feedId },
       });
     }
 
     return result;
   } catch (error) {
-    console.error('Error removing Feed Like:', error);
+    console.error("Error removing Feed Like:", error);
     throw error;
   }
 }
@@ -453,13 +736,15 @@ async function getFeedLikes(feedId, pagination = { page: 1, pageSize: 20 }) {
 
     const { count, rows } = await FeedLike.findAndCountAll({
       where: { feed_id: feedId },
-      include: [{
-        model: User,
-        attributes: ['user_id', 'user_name', 'full_name', 'profile_pic']
-      }],
+      include: [
+        {
+          model: User,
+          attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+        },
+      ],
       offset: offset,
       limit: limit,
-      order: [['createdAt', 'DESC']]
+      order: [["createdAt", "DESC"]],
     });
 
     return {
@@ -468,11 +753,11 @@ async function getFeedLikes(feedId, pagination = { page: 1, pageSize: 20 }) {
         total_records: count,
         total_pages: Math.ceil(count / limit),
         current_page: Number(page),
-        records_per_page: limit
-      }
+        records_per_page: limit,
+      },
     };
   } catch (error) {
-    console.error('Error fetching Feed Likes:', error);
+    console.error("Error fetching Feed Likes:", error);
     throw error;
   }
 }
@@ -487,13 +772,13 @@ async function addFeedComment(commentPayload) {
     const comment = await FeedComment.create(commentPayload);
 
     // Increment total_comments count
-    await Feed.increment('total_comments', {
-      where: { feed_id: commentPayload.feed_id }
+    await Feed.increment("total_comments", {
+      where: { feed_id: commentPayload.feed_id },
     });
 
     return comment;
   } catch (error) {
-    console.error('Error adding Feed Comment:', error);
+    console.error("Error adding Feed Comment:", error);
     throw error;
   }
 }
@@ -504,7 +789,11 @@ async function addFeedComment(commentPayload) {
  * @param {Object} pagination - Pagination params
  * @returns {Promise<Object>} Comments with pagination
  */
-async function getFeedComments(feedId, pagination = { page: 1, pageSize: 20 }, userId = null) {
+async function getFeedComments(
+  feedId,
+  pagination = { page: 1, pageSize: 20 },
+  userId = null,
+) {
   try {
     const { page = 1, pageSize = 20 } = pagination;
     const offset = (Number(page) - 1) * Number(pageSize);
@@ -516,8 +805,8 @@ async function getFeedComments(feedId, pagination = { page: 1, pageSize: 20 }, u
           SELECT COUNT(*)::int FROM "FeedComments" AS rc
           WHERE rc."parent_comment_id" = "FeedComment"."feed_comment_id"
         )`),
-        'reply_count'
-      ]
+        "reply_count",
+      ],
     ];
 
     if (userId) {
@@ -529,25 +818,27 @@ async function getFeedComments(feedId, pagination = { page: 1, pageSize: 20 }, u
             AND fcl."user_id" = ${Number(userId)}
           )
         )`),
-        'is_liked'
+        "is_liked",
       ]);
     }
 
     const { count, rows } = await FeedComment.findAndCountAll({
       where: {
         feed_id: feedId,
-        parent_comment_id: null // Get only top-level comments
+        parent_comment_id: null, // Get only top-level comments
       },
       attributes: {
-        include: extraAttributes
+        include: extraAttributes,
       },
-      include: [{
-        model: User,
-        attributes: ['user_id', 'user_name', 'full_name', 'profile_pic']
-      }],
+      include: [
+        {
+          model: User,
+          attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+        },
+      ],
       offset: offset,
       limit: limit,
-      order: [['createdAt', 'DESC']]
+      order: [["createdAt", "DESC"]],
     });
 
     return {
@@ -556,11 +847,11 @@ async function getFeedComments(feedId, pagination = { page: 1, pageSize: 20 }, u
         total_records: count,
         total_pages: Math.ceil(count / limit),
         current_page: Number(page),
-        records_per_page: limit
-      }
+        records_per_page: limit,
+      },
     };
   } catch (error) {
-    console.error('Error fetching Feed Comments:', error);
+    console.error("Error fetching Feed Comments:", error);
     throw error;
   }
 }
@@ -571,7 +862,11 @@ async function getFeedComments(feedId, pagination = { page: 1, pageSize: 20 }, u
  * @param {Object} pagination - Pagination params
  * @returns {Promise<Object>} Replies with pagination
  */
-async function getFeedCommentReplies(parentCommentId, pagination = { page: 1, pageSize: 20 }, userId = null) {
+async function getFeedCommentReplies(
+  parentCommentId,
+  pagination = { page: 1, pageSize: 20 },
+  userId = null,
+) {
   try {
     const { page = 1, pageSize = 20 } = pagination;
     const offset = (Number(page) - 1) * Number(pageSize);
@@ -588,20 +883,24 @@ async function getFeedCommentReplies(parentCommentId, pagination = { page: 1, pa
             AND fcl."user_id" = ${Number(userId)}
           )
         )`),
-        'is_liked'
+        "is_liked",
       ]);
     }
 
     const { count, rows } = await FeedComment.findAndCountAll({
       where: { parent_comment_id: parentCommentId },
-      ...(extraAttributes.length > 0 ? { attributes: { include: extraAttributes } } : {}),
-      include: [{
-        model: User,
-        attributes: ['user_id', 'user_name', 'full_name', 'profile_pic']
-      }],
+      ...(extraAttributes.length > 0
+        ? { attributes: { include: extraAttributes } }
+        : {}),
+      include: [
+        {
+          model: User,
+          attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+        },
+      ],
       offset,
       limit,
-      order: [['createdAt', 'ASC']]
+      order: [["createdAt", "ASC"]],
     });
 
     return {
@@ -610,11 +909,11 @@ async function getFeedCommentReplies(parentCommentId, pagination = { page: 1, pa
         total_records: count,
         total_pages: Math.ceil(count / limit),
         current_page: Number(page),
-        records_per_page: limit
-      }
+        records_per_page: limit,
+      },
     };
   } catch (error) {
-    console.error('Error fetching Feed Comment Replies:', error);
+    console.error("Error fetching Feed Comment Replies:", error);
     throw error;
   }
 }
@@ -627,17 +926,24 @@ async function getFeedCommentReplies(parentCommentId, pagination = { page: 1, pa
  */
 async function addFeedCommentLike(feedCommentId, userId) {
   try {
-    const existing = await FeedCommentLike.findOne({ where: { feed_comment_id: feedCommentId, user_id: userId } });
+    const existing = await FeedCommentLike.findOne({
+      where: { feed_comment_id: feedCommentId, user_id: userId },
+    });
     if (existing) return null;
 
-    const like = await FeedCommentLike.create({ feed_comment_id: feedCommentId, user_id: userId });
+    const like = await FeedCommentLike.create({
+      feed_comment_id: feedCommentId,
+      user_id: userId,
+    });
 
     // Increment total_likes on comment
-    await FeedComment.increment('total_likes', { where: { feed_comment_id: feedCommentId } });
+    await FeedComment.increment("total_likes", {
+      where: { feed_comment_id: feedCommentId },
+    });
 
     return like;
   } catch (error) {
-    console.error('Error adding Feed Comment Like:', error);
+    console.error("Error adding Feed Comment Like:", error);
     throw error;
   }
 }
@@ -650,13 +956,17 @@ async function addFeedCommentLike(feedCommentId, userId) {
  */
 async function removeFeedCommentLike(feedCommentId, userId) {
   try {
-    const result = await FeedCommentLike.destroy({ where: { feed_comment_id: feedCommentId, user_id: userId } });
+    const result = await FeedCommentLike.destroy({
+      where: { feed_comment_id: feedCommentId, user_id: userId },
+    });
     if (result > 0) {
-      await FeedComment.decrement('total_likes', { where: { feed_comment_id: feedCommentId } });
+      await FeedComment.decrement("total_likes", {
+        where: { feed_comment_id: feedCommentId },
+      });
     }
     return result;
   } catch (error) {
-    console.error('Error removing Feed Comment Like:', error);
+    console.error("Error removing Feed Comment Like:", error);
     throw error;
   }
 }
@@ -668,26 +978,28 @@ async function removeFeedCommentLike(feedCommentId, userId) {
  */
 async function deleteFeedComment(commentId) {
   try {
-    const comment = await FeedComment.findOne({ where: { feed_comment_id: commentId } });
+    const comment = await FeedComment.findOne({
+      where: { feed_comment_id: commentId },
+    });
 
     if (!comment) {
       return 0;
     }
 
     const result = await FeedComment.destroy({
-      where: { feed_comment_id: commentId }
+      where: { feed_comment_id: commentId },
     });
 
     // Decrement total_comments count
     if (result > 0) {
-      await Feed.decrement('total_comments', {
-        where: { feed_id: comment.feed_id }
+      await Feed.decrement("total_comments", {
+        where: { feed_id: comment.feed_id },
       });
     }
 
     return result;
   } catch (error) {
-    console.error('Error deleting Feed Comment:', error);
+    console.error("Error deleting Feed Comment:", error);
     throw error;
   }
 }
@@ -701,7 +1013,7 @@ async function deleteFeedComment(commentId) {
 async function addFeedSave(feedId, userId) {
   try {
     const existingSave = await FeedSave.findOne({
-      where: { feed_id: feedId, user_id: userId }
+      where: { feed_id: feedId, user_id: userId },
     });
 
     if (existingSave) {
@@ -710,17 +1022,17 @@ async function addFeedSave(feedId, userId) {
 
     const save = await FeedSave.create({
       feed_id: feedId,
-      user_id: userId
+      user_id: userId,
     });
 
     // Increment total_saves count
-    await Feed.increment('total_saves', {
-      where: { feed_id: feedId }
+    await Feed.increment("total_saves", {
+      where: { feed_id: feedId },
     });
 
     return save;
   } catch (error) {
-    console.error('Error adding Feed Save:', error);
+    console.error("Error adding Feed Save:", error);
     throw error;
   }
 }
@@ -734,18 +1046,18 @@ async function addFeedSave(feedId, userId) {
 async function removeFeedSave(feedId, userId) {
   try {
     const result = await FeedSave.destroy({
-      where: { feed_id: feedId, user_id: userId }
+      where: { feed_id: feedId, user_id: userId },
     });
 
     if (result > 0) {
-      await Feed.decrement('total_saves', {
-        where: { feed_id: feedId }
+      await Feed.decrement("total_saves", {
+        where: { feed_id: feedId },
       });
     }
 
     return result;
   } catch (error) {
-    console.error('Error removing Feed Save:', error);
+    console.error("Error removing Feed Save:", error);
     throw error;
   }
 }
@@ -756,7 +1068,10 @@ async function removeFeedSave(feedId, userId) {
  * @param {Object} pagination - Pagination params
  * @returns {Promise<Object>} Saved feeds with pagination
  */
-async function getUserSavedFeeds(userId, pagination = { page: 1, pageSize: 10 }) {
+async function getUserSavedFeeds(
+  userId,
+  pagination = { page: 1, pageSize: 10 },
+) {
   try {
     const { page = 1, pageSize = 10 } = pagination;
     const offset = (Number(page) - 1) * Number(pageSize);
@@ -764,36 +1079,44 @@ async function getUserSavedFeeds(userId, pagination = { page: 1, pageSize: 10 })
 
     const { count, rows } = await FeedSave.findAndCountAll({
       where: { user_id: userId },
-      include: [{
-        model: Feed,
-        include: [
-          {
-            model: User,
-            attributes: ['user_id', 'user_name', 'full_name', 'profile_pic']
-          },
-          {
-            model: FeedMedia,
-            as: 'media',
-            attributes: ['feed_media_id', 'media_url', 'media_type', 'thumbnail_url', 'order']
-          }
-        ]
-      }],
+      include: [
+        {
+          model: Feed,
+          include: [
+            {
+              model: User,
+              attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+            },
+            {
+              model: FeedMedia,
+              as: "media",
+              attributes: [
+                "feed_media_id",
+                "media_url",
+                "media_type",
+                "thumbnail_url",
+                "order",
+              ],
+            },
+          ],
+        },
+      ],
       offset: offset,
       limit: limit,
-      order: [['createdAt', 'DESC']]
+      order: [["createdAt", "DESC"]],
     });
 
     return {
-      Records: rows.map(item => item.Feed),
+      Records: rows.map((item) => item.Feed),
       Pagination: {
         total_records: count,
         total_pages: Math.ceil(count / limit),
         current_page: Number(page),
-        records_per_page: limit
-      }
+        records_per_page: limit,
+      },
     };
   } catch (error) {
-    console.error('Error fetching User Saved Feeds:', error);
+    console.error("Error fetching User Saved Feeds:", error);
     throw error;
   }
 }
@@ -807,7 +1130,7 @@ function extractHashtags(text) {
   if (!text) return [];
   const hashtagRegex = /#[\w]+/g;
   const hashtags = text.match(hashtagRegex) || [];
-  return hashtags.map(tag => tag.toLowerCase());
+  return hashtags.map((tag) => tag.toLowerCase());
 }
 
 /**
@@ -819,7 +1142,7 @@ function extractMentions(text) {
   if (!text) return [];
   const mentionRegex = /@[\w]+/g;
   const mentions = text.match(mentionRegex) || [];
-  return mentions.map(mention => mention.substring(1).toLowerCase());
+  return mentions.map((mention) => mention.substring(1).toLowerCase());
 }
 
 /**
@@ -832,7 +1155,7 @@ async function reportFeed(reportPayload) {
     const report = await FeedReport.create(reportPayload);
     return report;
   } catch (error) {
-    console.error('Error reporting Feed:', error);
+    console.error("Error reporting Feed:", error);
     throw error;
   }
 }
@@ -852,17 +1175,19 @@ async function getFeedReports(pagination = { page: 1, pageSize: 20 }) {
       include: [
         {
           model: Feed,
-          include: [{ model: User, attributes: ['user_id', 'user_name', 'full_name'] }]
+          include: [
+            { model: User, attributes: ["user_id", "user_name", "full_name"] },
+          ],
         },
         {
           model: User,
-          attributes: ['user_id', 'user_name', 'full_name'],
-          as: 'ReportedByUser'
-        }
+          attributes: ["user_id", "user_name", "full_name"],
+          as: "ReportedByUser",
+        },
       ],
       offset: offset,
       limit: limit,
-      order: [['createdAt', 'DESC']]
+      order: [["createdAt", "DESC"]],
     });
 
     return {
@@ -871,11 +1196,11 @@ async function getFeedReports(pagination = { page: 1, pageSize: 20 }) {
         total_records: count,
         total_pages: Math.ceil(count / limit),
         current_page: Number(page),
-        records_per_page: limit
-      }
+        records_per_page: limit,
+      },
     };
   } catch (error) {
-    console.error('Error fetching Feed Reports:', error);
+    console.error("Error fetching Feed Reports:", error);
     throw error;
   }
 }
@@ -904,5 +1229,5 @@ module.exports = {
   reportFeed,
   getFeedReports,
   getFeedPostsAdminservice,
-  getFeedByIdAdmin
+  getFeedByIdAdmin,
 };

@@ -10,7 +10,10 @@ const {
 } = require("../../service/common/videoTranscode.service");
 const { getblock } = require("../../service/repository/Block.service");
 const { getComment } = require("../../service/repository/Comment.service");
-const { isFollow } = require("../../service/repository/Follow.service");
+const {
+  isFollow,
+  getFollow,
+} = require("../../service/repository/Follow.service");
 const {
   getHashTags,
   createHashtag,
@@ -370,7 +373,7 @@ async function showSocials(req, res) {
 
       const block1 = await getblock({ user_id: user_id });
       const block2 = await getblock({ blocked_id: user_id });
-     if (block1?.Records?.length > 0 || block2?.Records?.length > 0) {
+      if (block1?.Records?.length > 0 || block2?.Records?.length > 0) {
         block1?.Records?.forEach((blocks) => {
           uniqueIds.add(blocks?.dataValues?.blocked_id);
         });
@@ -381,18 +384,22 @@ async function showSocials(req, res) {
         excludedUserIds = Array.from(uniqueIds);
       }
 
-      status = true;
+      let status = true;
       let socials;
       if (order === "Following") {
-        const followings = await Follow.findAll({
-          where: {
+        const followings = await getFollow(
+          {
             follower_id: user_id,
             approved: true,
           },
-          attributes: ["user_id"],
-        });
+          [],
+          {
+            page: 1,
+            pageSize: 10000,
+          },
+        );
 
-        const followingIds = followings.map((f) => f.user_id);
+        const followingIds = followings?.Records?.map((f) => f.user_id) || [];
 
         if (followingIds.length === 0) {
           return generalResponse(
@@ -424,12 +431,12 @@ async function showSocials(req, res) {
           latitude,
           longitude,
         );
-      } else if (order === "random") {
+      } else if (order === "Random") {
         socials = await getSocial(
           filteredData,
           { page, pageSize },
           excludedUserIds,
-          Sequelize.literal("RANDOM()"),
+          "Random",
         );
       } else {
         socials = await getSocial(
@@ -1289,6 +1296,54 @@ async function editSocial(req, res) {
   }
 }
 
+async function searchSocials(req, res) {
+  try {
+    const user_id = req.authData.user_id;
+    const { search, page = 1, pageSize = 10 } = req.body;
+
+    // console.log("authData =>", req.authData);
+    // console.log("body =>", req.body);
+
+    const filteredData = {
+      status: true,
+      deleted_by_user: false,
+      search,
+    };
+
+    // const socials = await getSocial(
+    //   filteredData,
+    //   { page, pageSize },
+    //   [],
+    //   [["createdAt", "DESC"]],
+    // );
+
+    const socials = await getSocial(
+      filteredData,
+      { page, pageSize },
+      [],
+      [["createdAt", "DESC"]],
+    );
+
+    if (!socials?.Records?.length) {
+      return generalResponse(
+        res,
+        {
+          Records: [],
+          Pagination: {},
+        },
+        "No Socials Found",
+        true,
+        true,
+      );
+    }
+
+    return generalResponse(res, socials, "Socials Found", true, false);
+  } catch (error) {
+    console.log(error);
+    return generalResponse(res, {}, "Something went wrong", false, true);
+  }
+}
+
 module.exports = {
   uploadSocial,
   showSocials,
@@ -1301,4 +1356,5 @@ module.exports = {
   editSocial,
   showSocialswithoutauth,
   getSocialsOfFollowers,
+  searchSocials,
 };

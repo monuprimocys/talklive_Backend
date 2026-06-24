@@ -24,12 +24,19 @@ const {
   reportFeed,
   getFeedReports,
   getFeedPostsAdminservice,
-  getFeedByIdAdmin
+  getFeedByIdAdmin,
 } = require("../../service/repository/Feed.service");
 const { getUser } = require("../../service/repository/user.service");
-const { uploadFileToS3, getPresignedUploadUrl } = require("../../service/common/s3.service");
-const { FeedComment } = require('../../../models');
-const { Op } = require('sequelize');
+const {
+  uploadFileToS3,
+  getPresignedUploadUrl,
+} = require("../../service/common/s3.service");
+const { FeedComment } = require("../../../models");
+const {
+  isFollow,
+  getFollow,
+} = require("../../service/repository/Follow.service");
+const { Op, Sequelize } = require("sequelize");
 
 function parseBoolean(value) {
   if (typeof value === "boolean") {
@@ -78,28 +85,22 @@ function parseIntegerArray(value) {
 async function uploadMediaS3(req, res) {
   try {
     // Handle both upload.single('file') and upload.fields() formats
-    const file = req.file || (req.files?.['file']?.[0]);
+    const file = req.file || req.files?.["file"]?.[0];
     console.log("Received file for S3 upload:", file);
     if (!file || !file.originalname || !file.mimetype) {
       return generalResponse(res, {}, "File Data is missing", false, true, 404);
     }
-    const url = await uploadFileToS3(file, 'reelboost/feed');
+    const url = await uploadFileToS3(file, "reelboost/feed");
     if (url) {
       return generalResponse(
         res,
         { url: url },
         "File Uploaded Successfully",
         true,
-        true
+        true,
       );
     } else {
-      return generalResponse(
-        res,
-        {},
-        "Failed to Upload File",
-        false,
-        true
-      );
+      return generalResponse(res, {}, "Failed to Upload File", false, true);
     }
   } catch (error) {
     console.error("Error in uploading file in s3", error);
@@ -108,7 +109,7 @@ async function uploadMediaS3(req, res) {
       { success: false },
       "Something went wrong while uploading file in s3!",
       false,
-      true
+      true,
     );
   }
 }
@@ -122,39 +123,40 @@ async function getPresignedUrl(req, res) {
     const { file_type, mime_type } = req.body;
 
     // Determine folder path based on file type
-    let folderPath = 'reelboost/feed';
-    if (file_type === 'image') {
-      folderPath = 'reelboost/feed/images';
-    } else if (file_type === 'doc') {
-      folderPath = 'reelboost/feed/documents';
-    } else if (file_type === 'gif') {
-      folderPath = 'reelboost/feed/gifs';
-    } else if (file_type === 'video') {
-      folderPath = 'reelboost/feed/videos';
-    } else if (file_type === 'thumb') {
-      folderPath = 'reelboost/feed/thumbnails';
+    let folderPath = "reelboost/feed";
+    if (file_type === "image") {
+      folderPath = "reelboost/feed/images";
+    } else if (file_type === "doc") {
+      folderPath = "reelboost/feed/documents";
+    } else if (file_type === "gif") {
+      folderPath = "reelboost/feed/gifs";
+    } else if (file_type === "video") {
+      folderPath = "reelboost/feed/videos";
+    } else if (file_type === "thumb") {
+      folderPath = "reelboost/feed/thumbnails";
     }
 
+    console.log(" file ", file_type, mime_type, folderPath);
 
+    const result = await getPresignedUploadUrl(
+      folderPath,
+      file_type,
+      mime_type,
+    );
 
-     console.log(" file " , file_type , mime_type , folderPath);
-
-
-    const result = await getPresignedUploadUrl(folderPath, file_type, mime_type);
-
-      console.log("Presigned URL result:", result);
+    console.log("Presigned URL result:", result);
 
     return generalResponse(
       res,
       {
-        presigned_url: result.presignedUrl,  // URL to upload directly to S3
-        file_url: result.fileUrl,            // Final accessible URL after upload
+        presigned_url: result.presignedUrl, // URL to upload directly to S3
+        file_url: result.fileUrl, // Final accessible URL after upload
         key: result.key,
-        file_name: result.fileName
+        file_name: result.fileName,
       },
       "Presigned URL generated successfully",
       true,
-      true
+      true,
     );
   } catch (error) {
     console.error("Error generating presigned URL:", error);
@@ -163,11 +165,10 @@ async function getPresignedUrl(req, res) {
       { success: false },
       "Something went wrong while generating presigned URL!",
       false,
-      true
+      true,
     );
   }
 }
-
 
 /**
  * Create a new feed post
@@ -185,7 +186,9 @@ async function createFeedPost(req, res) {
       "content",
       "location",
       "allow_comments",
-      "mentioned_users"
+      "mentioned_users",
+      "latitude",
+      "longitude",
     ];
 
     let filteredData;
@@ -196,44 +199,80 @@ async function createFeedPost(req, res) {
         filteredData.allow_comments = parseBoolean(filteredData.allow_comments);
       }
 
-      filteredData.mentioned_users = parseIntegerArray(filteredData.mentioned_users);
-      filteredData.user_id = user_id;
+      filteredData.mentioned_users = parseIntegerArray(
+        filteredData.mentioned_users,
+      );
 
+      if (filteredData.latitude) {
+        filteredData.latitude = Number(filteredData.latitude);
+      }
+
+      if (filteredData.longitude) {
+        filteredData.longitude = Number(filteredData.longitude);
+      }
+      filteredData.user_id = user_id;
     } catch (err) {
       return generalResponse(res, {}, "Invalid feed fields", false, true, 400);
     }
 
     /* ---------- VALIDATE FEED TYPE ---------- */
-    const validFeedTypes = ['text', 'text_image', 'text_video', 'image_only', 'video_only'];
+    const validFeedTypes = [
+      "text",
+      "text_image",
+      "text_video",
+      "image_only",
+      "video_only",
+    ];
 
     if (!validFeedTypes.includes(filteredData.feed_type)) {
       return generalResponse(
         res,
         {},
-        `Invalid feed_type. Allowed: ${validFeedTypes.join(', ')}`,
+        `Invalid feed_type. Allowed: ${validFeedTypes.join(", ")}`,
         false,
         true,
-        400
+        400,
       );
     }
 
     /* ---------- VALIDATE CONTENT ---------- */
-    if (['text', 'text_image', 'text_video'].includes(filteredData.feed_type)) {
+    if (["text", "text_image", "text_video"].includes(filteredData.feed_type)) {
       if (!filteredData.content || filteredData.content.trim().length === 0) {
-        return generalResponse(res, {}, "Content is required", false, true, 400);
+        return generalResponse(
+          res,
+          {},
+          "Content is required",
+          false,
+          true,
+          400,
+        );
       }
     }
 
     /* ---------- VALIDATE MEDIA ---------- */
-    if (filteredData.feed_type !== 'text') {
+    if (filteredData.feed_type !== "text") {
       if (process.env.MEDIAFLOW === "S3") {
         if (!req.body.file_media_1) {
-          return generalResponse(res, {}, "Media URL required (S3 mode)", false, true, 400);
+          return generalResponse(
+            res,
+            {},
+            "Media URL required (S3 mode)",
+            false,
+            true,
+            400,
+          );
         }
       } else {
-        const files = req.files?.['files'] || [];
+        const files = req.files?.["files"] || [];
         if (!files.length) {
-          return generalResponse(res, {}, "Media file required", false, true, 400);
+          return generalResponse(
+            res,
+            {},
+            "Media file required",
+            false,
+            true,
+            400,
+          );
         }
       }
     }
@@ -253,12 +292,18 @@ async function createFeedPost(req, res) {
     const feed = await createFeed(filteredData);
 
     if (!feed) {
-      return generalResponse(res, {}, "Failed to create feed", false, true, 500);
+      return generalResponse(
+        res,
+        {},
+        "Failed to create feed",
+        false,
+        true,
+        500,
+      );
     }
 
     /* ---------- HANDLE MEDIA ---------- */
-    if (filteredData.feed_type !== 'text') {
-
+    if (filteredData.feed_type !== "text") {
       /* ---------- S3 MODE ---------- */
       if (process.env.MEDIAFLOW === "S3") {
         const mediaPromises = [];
@@ -268,56 +313,75 @@ async function createFeedPost(req, res) {
           const mediaPayload = {
             feed_id: feed.feed_id,
             media_url: mediaUrl,
-            media_type:
-              ['image_only', 'text_image'].includes(filteredData.feed_type)
-                ? 'image'
-                : 'video',
-            order: i - 1
+            media_type: ["image_only", "text_image"].includes(
+              filteredData.feed_type,
+            )
+              ? "image"
+              : "video",
+            order: i - 1,
           };
           mediaPromises.push(addFeedMedia(mediaPayload));
           i++;
         }
         if (i === 1 && req.body.file_media_1) {
-          mediaPromises.push(addFeedMedia({
-            feed_id: feed.feed_id,
-            media_url: req.body.file_media_1,
-            media_type: ['image_only', 'text_image'].includes(filteredData.feed_type) ? 'image' : 'video',
-            order: 0
-          }));
+          mediaPromises.push(
+            addFeedMedia({
+              feed_id: feed.feed_id,
+              media_url: req.body.file_media_1,
+              media_type: ["image_only", "text_image"].includes(
+                filteredData.feed_type,
+              )
+                ? "image"
+                : "video",
+              order: 0,
+            }),
+          );
         }
         await Promise.all(mediaPromises);
-      }
-
-      /* ---------- LOCAL MODE ---------- */
-      else {
-        const files = req.files?.['files'] || [];
+      } else {
+        /* ---------- LOCAL MODE ---------- */
+        const files = req.files?.["files"] || [];
 
         let mediaType;
         let mediaUrl;
         let thumbnailUrl = null;
 
         /* ===== IMAGE CASE ===== */
-        if (['image_only', 'text_image'].includes(filteredData.feed_type)) {
+        if (["image_only", "text_image"].includes(filteredData.feed_type)) {
           const imageFile = files[0];
 
           if (!imageFile) {
-            return generalResponse(res, {}, "Image file required", false, true, 400);
+            return generalResponse(
+              res,
+              {},
+              "Image file required",
+              false,
+              true,
+              400,
+            );
           }
 
-          mediaType = 'image';
+          mediaType = "image";
           mediaUrl = imageFile.path;
-        }
-
-        /* ===== VIDEO CASE ===== */
-        else if (['video_only', 'text_video'].includes(filteredData.feed_type)) {
+        } else if (
+          /* ===== VIDEO CASE ===== */
+          ["video_only", "text_video"].includes(filteredData.feed_type)
+        ) {
           const thumbnailFile = files[0]; // optional
-          const videoFile = files[1];     // required
+          const videoFile = files[1]; // required
 
           if (!videoFile) {
-            return generalResponse(res, {}, "Video file required", false, true, 400);
+            return generalResponse(
+              res,
+              {},
+              "Video file required",
+              false,
+              true,
+              400,
+            );
           }
 
-          mediaType = 'video';
+          mediaType = "video";
           mediaUrl = videoFile.path;
           thumbnailUrl = thumbnailFile ? thumbnailFile.path : null;
         }
@@ -328,7 +392,7 @@ async function createFeedPost(req, res) {
           media_type: mediaType,
           media_url: mediaUrl,
           thumbnail_url: thumbnailUrl,
-          order: 0
+          order: 0,
         };
 
         await addFeedMedia(mediaPayload);
@@ -342,20 +406,12 @@ async function createFeedPost(req, res) {
       "Feed post created successfully",
       true,
       true,
-      201
+      201,
     );
-
   } catch (error) {
     console.error("Error in createFeedPost:", error);
 
-    return generalResponse(
-      res,
-      {},
-      "Something went wrong",
-      false,
-      true,
-      500
-    );
+    return generalResponse(res, {}, "Something went wrong", false, true, 500);
   }
 }
 
@@ -365,6 +421,7 @@ async function createFeedPost(req, res) {
  */
 async function getFeedPosts(req, res) {
   try {
+    const Sequelize = require("sequelize");
     const {
       page = 1,
       pageSize = 10,
@@ -372,21 +429,24 @@ async function getFeedPosts(req, res) {
       location,
       hashtag,
       user_name,
+      order, // Following | Nearby | Random | Latest
+      latitude,
+      longitude,
       sort_by = "createdAt",
       sort_order = "DESC",
-      exclude_user_ids = []
+      exclude_user_ids = [],
     } = req.body;
 
-    
-     // ✅ Optional user_id
-    const user_id = req.authData?.user_id
-      ? Number(req.authData.user_id)
-      : null;
+    // console.log("REQ ORDER =>", req.body.order);
+    // console.log("ORDER VARIABLE =>", order);
+
+    // ✅ Optional user_id
+    const user_id = req.authData?.user_id ? Number(req.authData.user_id) : null;
 
     // ✅ Build filter
     const filterPayload = {
       status: true,
-      deleted_by_user: false
+      deleted_by_user: false,
     };
 
     if (feed_type && feed_type !== "all") {
@@ -406,13 +466,88 @@ async function getFeedPosts(req, res) {
     }
 
     // ✅ IMPORTANT FIX: pass user_id here
-    const feeds = await getFeed(
-      filterPayload,
-      { page: Number(page), pageSize: Number(pageSize) },
-      Array.isArray(exclude_user_ids) ? exclude_user_ids : [],
-      [[sort_by, sort_order]],
-      user_id // 🔥 FIXED
-    );
+    // const feeds = await getFeed(
+    //   filterPayload,
+    //   { page: Number(page), pageSize: Number(pageSize) },
+    //   Array.isArray(exclude_user_ids) ? exclude_user_ids : [],
+    //   [[sort_by, sort_order]],
+    //   user_id, // 🔥 FIXED
+    // );
+
+    let feeds;
+
+    if (order === "Following") {
+      const followings = await getFollow(
+        {
+          follower_id: user_id,
+          approved: true,
+        },
+        [],
+        {
+          page: 1,
+          pageSize: 10000,
+        },
+      );
+
+      // 👇 Yaha add karo
+      console.log("USER ID =>", user_id);
+      console.log("FOLLOWINGS COUNT =>", followings.Records.length);
+      console.log(
+        "FOLLOWINGS DATA =>",
+        JSON.stringify(followings.Records, null, 2),
+      );
+
+      const followingIds = followings?.Records?.map((f) => f.user_id) || [];
+
+      if (followingIds.length === 0) {
+        return generalResponse(
+          res,
+          {
+            Records: [],
+            Pagination: {},
+          },
+          "No following users found",
+          true,
+          true,
+        );
+      }
+
+      filterPayload.user_id = followingIds;
+
+      feeds = await getFeed(
+        filterPayload,
+        { page: Number(page), pageSize: Number(pageSize) },
+        exclude_user_ids,
+        [["createdAt", "DESC"]],
+        user_id,
+      );
+    } else if (order === "Nearby") {
+      feeds = await getFeed(
+        filterPayload,
+        { page: Number(page), pageSize: Number(pageSize) },
+        exclude_user_ids,
+        "Nearby",
+        user_id,
+        latitude,
+        longitude,
+      );
+    } else if (order === "Random") {
+      feeds = await getFeed(
+        filterPayload,
+        { page: Number(page), pageSize: Number(pageSize) },
+        exclude_user_ids,
+        Sequelize.literal("RANDOM()"),
+        user_id,
+      );
+    } else {
+      feeds = await getFeed(
+        filterPayload,
+        { page: Number(page), pageSize: Number(pageSize) },
+        exclude_user_ids,
+        [["createdAt", "DESC"]],
+        user_id,
+      );
+    }
 
     return generalResponse(
       res,
@@ -420,7 +555,7 @@ async function getFeedPosts(req, res) {
       "Feed posts retrieved successfully",
       true,
       false,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in getFeedPosts:", error);
@@ -430,20 +565,10 @@ async function getFeedPosts(req, res) {
       "Something went wrong while fetching feed posts",
       false,
       true,
-      500
+      500,
     );
   }
 }
-
-
-
-
-
-
-
-
-
-
 
 //  Get feed for admin
 
@@ -458,12 +583,10 @@ async function getFeedPostsAdmin(req, res) {
       user_name,
       sort_by = "createdAt",
       sort_order = "DESC",
-      exclude_user_ids = []
+      exclude_user_ids = [],
     } = req.body;
 
-    const user_id = req.authData?.user_id
-      ? Number(req.authData.user_id)
-      : null;
+    const user_id = req.authData?.user_id ? Number(req.authData.user_id) : null;
 
     // No status/deleted_by_user filter — admin sees all feed
     const filterPayload = {};
@@ -489,7 +612,7 @@ async function getFeedPostsAdmin(req, res) {
       { page: Number(page), pageSize: Number(pageSize) },
       Array.isArray(exclude_user_ids) ? exclude_user_ids : [],
       [[sort_by, sort_order]],
-      user_id
+      user_id,
     );
 
     return generalResponse(
@@ -498,7 +621,7 @@ async function getFeedPostsAdmin(req, res) {
       "Feed posts retrieved successfully",
       true,
       false,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in getFeedPostsAdmin:", error);
@@ -508,11 +631,10 @@ async function getFeedPostsAdmin(req, res) {
       "Something went wrong while fetching feed posts",
       false,
       true,
-      500
+      500,
     );
   }
 }
-
 
 /**
  * Get a single feed post with details
@@ -538,7 +660,7 @@ async function getFeedPostDetail(req, res) {
       "Feed post details retrieved successfully",
       true,
       false,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in getFeedPostDetail:", error);
@@ -548,7 +670,7 @@ async function getFeedPostDetail(req, res) {
       "Something went wrong while fetching feed post details",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -574,7 +696,14 @@ async function editFeedPost(req, res) {
     }
 
     if (feed.user_id !== user_id) {
-      return generalResponse(res, {}, "Unauthorized to edit this feed post", false, true, 403);
+      return generalResponse(
+        res,
+        {},
+        "Unauthorized to edit this feed post",
+        false,
+        true,
+        403,
+      );
     }
 
     let filteredData;
@@ -584,7 +713,14 @@ async function editFeedPost(req, res) {
         filteredData.allow_comments = parseBoolean(filteredData.allow_comments);
       }
     } catch (err) {
-      return generalResponse(res, {}, "Invalid update fields", false, true, 400);
+      return generalResponse(
+        res,
+        {},
+        "Invalid update fields",
+        false,
+        true,
+        400,
+      );
     }
 
     // Update hashtags if content is updated
@@ -595,7 +731,14 @@ async function editFeedPost(req, res) {
     const result = await updateFeed(filteredData, { feed_id });
 
     if (result[0] === 0) {
-      return generalResponse(res, {}, "Failed to update feed post", false, true, 500);
+      return generalResponse(
+        res,
+        {},
+        "Failed to update feed post",
+        false,
+        true,
+        500,
+      );
     }
 
     return generalResponse(
@@ -604,7 +747,7 @@ async function editFeedPost(req, res) {
       "Feed post updated successfully",
       true,
       true,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in editFeedPost:", error);
@@ -614,7 +757,7 @@ async function editFeedPost(req, res) {
       "Something went wrong while updating feed post",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -639,13 +782,27 @@ async function deleteFeedPost(req, res) {
     }
 
     if (feed.user_id !== user_id) {
-      return generalResponse(res, {}, "Unauthorized to delete this feed post", false, true, 403);
+      return generalResponse(
+        res,
+        {},
+        "Unauthorized to delete this feed post",
+        false,
+        true,
+        403,
+      );
     }
 
     const result = await deleteFeed(parseInt(feed_id));
 
     if (result[0] === 0) {
-      return generalResponse(res, {}, "Failed to delete feed post", false, true, 500);
+      return generalResponse(
+        res,
+        {},
+        "Failed to delete feed post",
+        false,
+        true,
+        500,
+      );
     }
 
     return generalResponse(
@@ -654,7 +811,7 @@ async function deleteFeedPost(req, res) {
       "Feed post deleted successfully",
       true,
       true,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in deleteFeedPost:", error);
@@ -664,7 +821,7 @@ async function deleteFeedPost(req, res) {
       "Something went wrong while deleting feed post",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -694,26 +851,40 @@ async function uploadFeedMedia(req, res) {
     }
 
     if (feed.user_id !== user_id) {
-      return generalResponse(res, {}, "Unauthorized to add media to this feed post", false, true, 403);
+      return generalResponse(
+        res,
+        {},
+        "Unauthorized to add media to this feed post",
+        false,
+        true,
+        403,
+      );
     }
 
     // Determine media type
     const mimeType = file.mimetype;
-    let mediaType = 'image';
-    if (mimeType.startsWith('video')) {
-      mediaType = 'video';
+    let mediaType = "image";
+    if (mimeType.startsWith("video")) {
+      mediaType = "video";
     }
 
     // Upload to S3
     let mediaUrl;
     if (process.env.MEDIAFLOW === "S3") {
-      mediaUrl = await uploadFileToS3(file, 'reelboost/feed');
+      mediaUrl = await uploadFileToS3(file, "reelboost/feed");
     } else {
       mediaUrl = file.path;
     }
 
     if (!mediaUrl) {
-      return generalResponse(res, {}, "Failed to upload media", false, true, 500);
+      return generalResponse(
+        res,
+        {},
+        "Failed to upload media",
+        false,
+        true,
+        500,
+      );
     }
 
     // Create media record
@@ -721,7 +892,7 @@ async function uploadFeedMedia(req, res) {
       feed_id: parseInt(feed_id),
       media_url: mediaUrl,
       media_type: mediaType,
-      order: 0
+      order: 0,
     };
 
     const media = await addFeedMedia(mediaPayload);
@@ -732,7 +903,7 @@ async function uploadFeedMedia(req, res) {
       "Media uploaded successfully",
       true,
       true,
-      201
+      201,
     );
   } catch (error) {
     console.error("Error in uploadFeedMedia:", error);
@@ -742,7 +913,7 @@ async function uploadFeedMedia(req, res) {
       "Something went wrong while uploading media",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -763,7 +934,14 @@ async function likeFeedPost(req, res) {
     const like = await addFeedLike(parseInt(feed_id), user_id);
 
     if (like === null) {
-      return generalResponse(res, {}, "Feed post already liked", false, true, 409);
+      return generalResponse(
+        res,
+        {},
+        "Feed post already liked",
+        false,
+        true,
+        409,
+      );
     }
 
     return generalResponse(
@@ -772,7 +950,7 @@ async function likeFeedPost(req, res) {
       "Feed post liked successfully",
       true,
       true,
-      201
+      201,
     );
   } catch (error) {
     console.error("Error in likeFeedPost:", error);
@@ -782,7 +960,7 @@ async function likeFeedPost(req, res) {
       "Something went wrong while liking feed post",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -803,7 +981,14 @@ async function unlikeFeedPost(req, res) {
     const result = await removeFeedLike(parseInt(feed_id), user_id);
 
     if (result === 0) {
-      return generalResponse(res, {}, "Feed post not liked by user", false, true, 404);
+      return generalResponse(
+        res,
+        {},
+        "Feed post not liked by user",
+        false,
+        true,
+        404,
+      );
     }
 
     return generalResponse(
@@ -812,7 +997,7 @@ async function unlikeFeedPost(req, res) {
       "Like removed successfully",
       true,
       true,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in unlikeFeedPost:", error);
@@ -822,7 +1007,7 @@ async function unlikeFeedPost(req, res) {
       "Something went wrong while removing like",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -848,7 +1033,7 @@ async function getFeedPostLikes(req, res) {
       "Likes retrieved successfully",
       true,
       false,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in getFeedPostLikes:", error);
@@ -858,7 +1043,7 @@ async function getFeedPostLikes(req, res) {
       "Something went wrong while fetching likes",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -877,7 +1062,14 @@ async function addCommentToFeed(req, res) {
     }
 
     if (!comment_text || comment_text.trim().length === 0) {
-      return generalResponse(res, {}, "Comment text is required", false, true, 400);
+      return generalResponse(
+        res,
+        {},
+        "Comment text is required",
+        false,
+        true,
+        400,
+      );
     }
 
     // Verify feed allows comments
@@ -887,21 +1079,35 @@ async function addCommentToFeed(req, res) {
     }
 
     if (!feed.allow_comments) {
-      return generalResponse(res, {}, "Comments are disabled for this feed post", false, true, 403);
+      return generalResponse(
+        res,
+        {},
+        "Comments are disabled for this feed post",
+        false,
+        true,
+        403,
+      );
     }
 
     let mentionedUsers;
     try {
       mentionedUsers = parseIntegerArray(req.body.mentioned_users);
     } catch (err) {
-      return generalResponse(res, {}, "Invalid mentioned_users", false, true, 400);
+      return generalResponse(
+        res,
+        {},
+        "Invalid mentioned_users",
+        false,
+        true,
+        400,
+      );
     }
 
     const commentPayload = {
       feed_id: parseInt(feed_id),
       user_id,
       comment_text,
-      mentioned_users: mentionedUsers
+      mentioned_users: mentionedUsers,
     };
 
     const comment = await addFeedComment(commentPayload);
@@ -912,7 +1118,7 @@ async function addCommentToFeed(req, res) {
       "Comment added successfully",
       true,
       true,
-      201
+      201,
     );
   } catch (error) {
     console.error("Error in addCommentToFeed:", error);
@@ -922,7 +1128,7 @@ async function addCommentToFeed(req, res) {
       "Something went wrong while adding comment",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -941,7 +1147,11 @@ async function getFeedPostComments(req, res) {
       return generalResponse(res, {}, "Invalid feed ID", false, true, 400);
     }
 
-    const comments = await getFeedComments(parseInt(feed_id), { page, pageSize }, user_id);
+    const comments = await getFeedComments(
+      parseInt(feed_id),
+      { page, pageSize },
+      user_id,
+    );
 
     return generalResponse(
       res,
@@ -949,7 +1159,7 @@ async function getFeedPostComments(req, res) {
       "Comments retrieved successfully",
       true,
       false,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in getFeedPostComments:", error);
@@ -959,7 +1169,7 @@ async function getFeedPostComments(req, res) {
       "Something went wrong while fetching comments",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -989,7 +1199,7 @@ async function deleteCommentFromFeed(req, res) {
       "Comment deleted successfully",
       true,
       true,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in deleteCommentFromFeed:", error);
@@ -999,7 +1209,7 @@ async function deleteCommentFromFeed(req, res) {
       "Something went wrong while deleting comment",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -1020,7 +1230,14 @@ async function saveFeedPost(req, res) {
     const save = await addFeedSave(parseInt(feed_id), user_id);
 
     if (save === null) {
-      return generalResponse(res, {}, "Feed post already saved", false, true, 409);
+      return generalResponse(
+        res,
+        {},
+        "Feed post already saved",
+        false,
+        true,
+        409,
+      );
     }
 
     return generalResponse(
@@ -1029,7 +1246,7 @@ async function saveFeedPost(req, res) {
       "Feed post saved successfully",
       true,
       true,
-      201
+      201,
     );
   } catch (error) {
     console.error("Error in saveFeedPost:", error);
@@ -1039,7 +1256,7 @@ async function saveFeedPost(req, res) {
       "Something went wrong while saving feed post",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -1060,7 +1277,14 @@ async function unsaveFeedPost(req, res) {
     const result = await removeFeedSave(parseInt(feed_id), user_id);
 
     if (result === 0) {
-      return generalResponse(res, {}, "Feed post not saved by user", false, true, 404);
+      return generalResponse(
+        res,
+        {},
+        "Feed post not saved by user",
+        false,
+        true,
+        404,
+      );
     }
 
     return generalResponse(
@@ -1069,7 +1293,7 @@ async function unsaveFeedPost(req, res) {
       "Feed post removed from saves",
       true,
       true,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in unsaveFeedPost:", error);
@@ -1079,7 +1303,7 @@ async function unsaveFeedPost(req, res) {
       "Something went wrong while removing save",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -1101,7 +1325,7 @@ async function getUserSavedFeedsController(req, res) {
       "Saved feeds retrieved successfully",
       true,
       false,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in getUserSavedFeedsController:", error);
@@ -1111,7 +1335,7 @@ async function getUserSavedFeedsController(req, res) {
       "Something went wrong while fetching saved feeds",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -1131,10 +1355,16 @@ async function getMyFeeds(req, res) {
     const filterPayload = {
       user_id: Number(user_id),
       status: true,
-      deleted_by_user: false
+      deleted_by_user: false,
     };
 
-    const feeds = await getFeed(filterPayload, { page: Number(page), pageSize: Number(pageSize) }, [], [["createdAt", "DESC"]], user_id);
+    const feeds = await getFeed(
+      filterPayload,
+      { page: Number(page), pageSize: Number(pageSize) },
+      [],
+      [["createdAt", "DESC"]],
+      user_id,
+    );
 
     return generalResponse(
       res,
@@ -1142,7 +1372,7 @@ async function getMyFeeds(req, res) {
       "User feeds retrieved successfully",
       true,
       false,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in getMyFeeds:", error);
@@ -1152,7 +1382,7 @@ async function getMyFeeds(req, res) {
       "Something went wrong while fetching your feeds",
       false,
       true,
-      500
+      500,
     );
   }
 }
@@ -1166,12 +1396,31 @@ async function addReplyToComment(req, res) {
     const user_id = req.authData.user_id;
     const { feed_id, parent_comment_id, comment_text } = req.body;
 
-    if (!feed_id || isNaN(feed_id) || !parent_comment_id || isNaN(parent_comment_id)) {
-      return generalResponse(res, {}, "Invalid feed_id or parent_comment_id", false, true, 400);
+    if (
+      !feed_id ||
+      isNaN(feed_id) ||
+      !parent_comment_id ||
+      isNaN(parent_comment_id)
+    ) {
+      return generalResponse(
+        res,
+        {},
+        "Invalid feed_id or parent_comment_id",
+        false,
+        true,
+        400,
+      );
     }
 
     if (!comment_text || comment_text.trim().length === 0) {
-      return generalResponse(res, {}, "Comment text is required", false, true, 400);
+      return generalResponse(
+        res,
+        {},
+        "Comment text is required",
+        false,
+        true,
+        400,
+      );
     }
 
     const commentPayload = {
@@ -1179,7 +1428,7 @@ async function addReplyToComment(req, res) {
       user_id,
       comment_text,
       parent_comment_id: parseInt(parent_comment_id),
-      mentioned_users: []
+      mentioned_users: [],
     };
 
     const comment = await addFeedComment(commentPayload);
@@ -1190,11 +1439,18 @@ async function addReplyToComment(req, res) {
       "Reply added successfully",
       true,
       true,
-      201
+      201,
     );
   } catch (error) {
     console.error("Error in addReplyToComment:", error);
-    return generalResponse(res, {}, "Something went wrong while adding reply", false, true, 500);
+    return generalResponse(
+      res,
+      {},
+      "Something went wrong while adding reply",
+      false,
+      true,
+      500,
+    );
   }
 }
 
@@ -1211,12 +1467,30 @@ async function getCommentReplies(req, res) {
       return generalResponse(res, {}, "Invalid comment ID", false, true, 400);
     }
 
-    const replies = await getFeedCommentReplies(parseInt(comment_id), { page, pageSize }, user_id);
+    const replies = await getFeedCommentReplies(
+      parseInt(comment_id),
+      { page, pageSize },
+      user_id,
+    );
 
-    return generalResponse(res, replies, "Replies retrieved successfully", true, false, 200);
+    return generalResponse(
+      res,
+      replies,
+      "Replies retrieved successfully",
+      true,
+      false,
+      200,
+    );
   } catch (error) {
     console.error("Error in getCommentReplies:", error);
-    return generalResponse(res, {}, "Something went wrong while fetching replies", false, true, 500);
+    return generalResponse(
+      res,
+      {},
+      "Something went wrong while fetching replies",
+      false,
+      true,
+      500,
+    );
   }
 }
 
@@ -1231,15 +1505,29 @@ async function likeComment(req, res) {
     const user_id = req.authData.user_id;
 
     if (!feed_comment_id || isNaN(feed_comment_id)) {
-      return generalResponse(res, {}, "Invalid feed comment ID", false, true, 400);
+      return generalResponse(
+        res,
+        {},
+        "Invalid feed comment ID",
+        false,
+        true,
+        400,
+      );
     }
 
     const comment = await FeedComment.findOne({
-      where: { feed_comment_id: parseInt(feed_comment_id) }
+      where: { feed_comment_id: parseInt(feed_comment_id) },
     });
 
     if (!comment) {
-      return generalResponse(res, {}, "Comment or reply not found", false, true, 404);
+      return generalResponse(
+        res,
+        {},
+        "Comment or reply not found",
+        false,
+        true,
+        404,
+      );
     }
 
     const like = await addFeedCommentLike(parseInt(feed_comment_id), user_id);
@@ -1248,11 +1536,15 @@ async function likeComment(req, res) {
       // Already liked — just return current state
       return generalResponse(
         res,
-        { feed_comment_id: parseInt(feed_comment_id), is_liked: true, total_likes: comment.total_likes },
+        {
+          feed_comment_id: parseInt(feed_comment_id),
+          is_liked: true,
+          total_likes: comment.total_likes,
+        },
         "Comment already liked",
         false,
         true,
-        409
+        409,
       );
     }
 
@@ -1262,16 +1554,23 @@ async function likeComment(req, res) {
         feed_comment_id: parseInt(feed_comment_id),
         feed_comment_like_id: like.feed_comment_like_id,
         is_liked: true,
-        total_likes: comment.total_likes + 1
+        total_likes: comment.total_likes + 1,
       },
       "Comment liked successfully",
       true,
       true,
-      201
+      201,
     );
   } catch (error) {
     console.error("Error in likeComment:", error);
-    return generalResponse(res, {}, "Something went wrong while liking comment", false, true, 500);
+    return generalResponse(
+      res,
+      {},
+      "Something went wrong while liking comment",
+      false,
+      true,
+      500,
+    );
   }
 }
 
@@ -1286,29 +1585,50 @@ async function unlikeComment(req, res) {
     const user_id = req.authData.user_id;
 
     if (!feed_comment_id || isNaN(feed_comment_id)) {
-      return generalResponse(res, {}, "Invalid feed comment ID", false, true, 400);
+      return generalResponse(
+        res,
+        {},
+        "Invalid feed comment ID",
+        false,
+        true,
+        400,
+      );
     }
 
     // Verify the comment (or reply) exists
-    const { FeedComment } = require('../../../models');
+    const { FeedComment } = require("../../../models");
     const comment = await FeedComment.findOne({
-      where: { feed_comment_id: parseInt(feed_comment_id) }
+      where: { feed_comment_id: parseInt(feed_comment_id) },
     });
 
     if (!comment) {
-      return generalResponse(res, {}, "Comment or reply not found", false, true, 404);
+      return generalResponse(
+        res,
+        {},
+        "Comment or reply not found",
+        false,
+        true,
+        404,
+      );
     }
 
-    const result = await removeFeedCommentLike(parseInt(feed_comment_id), user_id);
+    const result = await removeFeedCommentLike(
+      parseInt(feed_comment_id),
+      user_id,
+    );
 
     if (result === 0) {
       return generalResponse(
         res,
-        { feed_comment_id: parseInt(feed_comment_id), is_liked: false, total_likes: comment.total_likes },
+        {
+          feed_comment_id: parseInt(feed_comment_id),
+          is_liked: false,
+          total_likes: comment.total_likes,
+        },
         "Comment was not liked by user",
         false,
         true,
-        404
+        404,
       );
     }
 
@@ -1317,16 +1637,23 @@ async function unlikeComment(req, res) {
       {
         feed_comment_id: parseInt(feed_comment_id),
         is_liked: false,
-        total_likes: Math.max(0, comment.total_likes - 1)
+        total_likes: Math.max(0, comment.total_likes - 1),
       },
       "Comment like removed successfully",
       true,
       true,
-      200
+      200,
     );
   } catch (error) {
     console.error("Error in unlikeComment:", error);
-    return generalResponse(res, {}, "Something went wrong while unliking comment", false, true, 500);
+    return generalResponse(
+      res,
+      {},
+      "Something went wrong while unliking comment",
+      false,
+      true,
+      500,
+    );
   }
 }
 
@@ -1344,15 +1671,22 @@ async function reportFeedPost(req, res) {
     }
 
     if (!report_type || report_type.trim().length === 0) {
-      return generalResponse(res, {}, "Report type is required", false, true, 400);
+      return generalResponse(
+        res,
+        {},
+        "Report type is required",
+        false,
+        true,
+        400,
+      );
     }
 
     const reportPayload = {
       feed_id: parseInt(feed_id),
       reported_by_user_id: user_id,
       report_type,
-      report_description: report_description || '',
-      status: 'pending'
+      report_description: report_description || "",
+      status: "pending",
     };
 
     const report = await reportFeed(reportPayload);
@@ -1363,7 +1697,7 @@ async function reportFeedPost(req, res) {
       "Feed post reported successfully",
       true,
       true,
-      201
+      201,
     );
   } catch (error) {
     console.error("Error in reportFeedPost:", error);
@@ -1373,13 +1707,10 @@ async function reportFeedPost(req, res) {
       "Something went wrong while reporting feed post",
       false,
       true,
-      500
+      500,
     );
   }
 }
-
-
-
 
 /**
  * Update feed status (Admin / Owner)
@@ -1397,7 +1728,14 @@ async function updateFeedStatus(req, res) {
     }
 
     if (typeof status !== "boolean") {
-      return generalResponse(res, {}, "Status must be true or false", false, true, 400);
+      return generalResponse(
+        res,
+        {},
+        "Status must be true or false",
+        false,
+        true,
+        400,
+      );
     }
 
     const feed = await getFeedByIdAdmin(parseInt(feed_id));
@@ -1405,13 +1743,17 @@ async function updateFeedStatus(req, res) {
       return generalResponse(res, {}, "Feed not found", false, true, 404);
     }
 
-    const result = await updateFeed(
-      { status },
-      { feed_id: parseInt(feed_id) }
-    );
+    const result = await updateFeed({ status }, { feed_id: parseInt(feed_id) });
 
     if (result[0] === 0) {
-      return generalResponse(res, {}, "Failed to update status", false, true, 500);
+      return generalResponse(
+        res,
+        {},
+        "Failed to update status",
+        false,
+        true,
+        500,
+      );
     }
 
     return generalResponse(
@@ -1420,15 +1762,50 @@ async function updateFeedStatus(req, res) {
       "Feed status updated successfully",
       true,
       true,
-      200
+      200,
     );
-
   } catch (error) {
     console.error("Error in updateFeedStatus:", error);
     return generalResponse(res, {}, "Something went wrong", false, true, 500);
   }
 }
 
+async function searchFeeds(req, res) {
+  try {
+    const { search, page = 1, pageSize = 10 } = req.body;
+
+    const filterPayload = {
+      status: true,
+      deleted_by_user: false,
+      search,
+    };
+
+    const feeds = await getFeed(
+      filterPayload,
+      { page: Number(page), pageSize: Number(pageSize) },
+      [],
+      [["createdAt", "DESC"]],
+    );
+
+    if (!feeds?.Records?.length) {
+      return generalResponse(
+        res,
+        {
+          Records: [],
+          Pagination: {},
+        },
+        "No Feeds Found",
+        true,
+        true,
+      );
+    }
+
+    return generalResponse(res, feeds, "Feeds Found", true, false);
+  } catch (error) {
+    console.error(error);
+    return generalResponse(res, {}, "Something went wrong", false, true);
+  }
+}
 
 module.exports = {
   createFeedPost,
@@ -1455,5 +1832,6 @@ module.exports = {
   uploadMediaS3,
   getPresignedUrl,
   updateFeedStatus,
-  getFeedPostsAdmin
+  getFeedPostsAdmin,
+  searchFeeds,
 };
