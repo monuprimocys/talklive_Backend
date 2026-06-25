@@ -52,6 +52,10 @@ module.exports = (sequelize, DataTypes) => {
       onDelete: "CASCADE",
     });
 
+    Story.hasMany(models.Message, {
+      foreignKey: "story_id",
+    });
+
     // Music relation (optional)
     Story.belongsTo(models.Music, {
       foreignKey: "music_id",

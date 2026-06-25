@@ -7,14 +7,20 @@ const chat_service = require("../../service/repository/Chat.service");
 
 const social_service = require("../../service/repository/SocialMedia.service");
 const updateFieldsFilter = require("../../helper/updateField.helper");
-const {
-  getUser,
-
-} = require("../../service/repository/user.service");
+const { getUser } = require("../../service/repository/user.service");
 const { generalResponse } = require("../../helper/response.helper");
-const { User, Message, Social } = require("../../../models");
+const {
+  User,
+  Message,
+  Social,
+  Story,
+  StoryMedia,
+  Music,
+} = require("../../../models");
 const filterData = require("../../helper/filter.helper");
-const { sendPushNotification } = require("../../service/common/onesignal.service");
+const {
+  sendPushNotification,
+} = require("../../service/common/onesignal.service");
 
 async function sendMessage(req, res) {
   try {
@@ -32,8 +38,11 @@ async function sendMessage(req, res) {
       "message_length",
       "message_size",
       "social_id",
+      "story_id",
+      "story_type_content",
+      "message_content",
     ];
-    allowedMandataryFields = ["message_type", "message_content"];
+    allowedMandataryFields = ["message_type"];
     let filteredData;
     let filteredDataMadatary;
     let filteredDataPayload;
@@ -42,21 +51,85 @@ async function sendMessage(req, res) {
       filteredDataMadatary = updateFieldsFilter(
         req.body,
         allowedMandataryFields,
-        true
+        true,
       );
       filteredDataPayload = { ...filteredData, ...filteredDataMadatary };
+      if (
+        ["text", "image", "video", "gif", "doc"].includes(
+          filteredDataPayload.message_type,
+        ) &&
+        !req.body.message_content
+      ) {
+        return generalResponse(
+          res,
+          { success: false },
+          "message_content is required",
+          false,
+          true,
+        );
+      }
       if (filteredDataPayload.message_type == "social") {
         const isSocial = await social_service.getSocial({
           social_id: filteredDataPayload.social_id,
         });
 
         const shares = isSocial.Records[0].total_shares;
-        await social_service.updateSocial({ social_id: filteredData.social_id }, { total_shares: shares + 1 })
+        await social_service.updateSocial(
+          { social_id: filteredData.social_id },
+          { total_shares: shares + 1 },
+        );
 
         filteredDataPayload.message_content =
           isSocial.Records[0].Media[0].media_location;
         filteredDataPayload.message_thumbnail =
           isSocial.Records[0].reel_thumbnail;
+      }
+
+      if (filteredDataPayload.message_type === "story") {
+        if (!filteredDataPayload.story_id) {
+          return generalResponse(
+            res,
+            { success: false },
+            "story_id is required",
+            false,
+            true,
+          );
+        }
+
+        const story = await Story.findOne({
+          where: {
+            story_id: filteredDataPayload.story_id,
+            status: true,
+          },
+          include: [
+            {
+              model: StoryMedia,
+              as: "media",
+            },
+            {
+              model: User,
+              attributes: ["user_id", "full_name", "user_name", "profile_pic"],
+            },
+            {
+              model: Music,
+              as: "music",
+              required: false,
+            },
+          ],
+        });
+
+        if (!story) {
+          return generalResponse(
+            res,
+            { success: false },
+            "Story not found",
+            false,
+            true,
+          );
+        }
+
+        filteredDataPayload.message_thumbnail =
+          story?.media?.[0]?.media_location || "";
       }
 
       if (filteredDataPayload.message_type === "image") {
@@ -67,14 +140,11 @@ async function sendMessage(req, res) {
               { success: false },
               "file_media_1 is required",
               false,
-              true
-            )
+              true,
+            );
           }
           filteredDataPayload.message_content = req.body.file_media_1;
-
-        }
-        else {
-
+        } else {
           filteredDataPayload.message_content = req.files[0].path;
         }
       }
@@ -86,21 +156,16 @@ async function sendMessage(req, res) {
               { success: false },
               "file_media_1 and file_media_2 are required",
               false,
-              true
-            )
+              true,
+            );
           }
-
 
           filteredDataPayload.message_thumbnail = req.body.file_media_1;
           filteredDataPayload.message_content = req.body.file_media_2;
-        }
-        else {
-
+        } else {
           filteredDataPayload.message_thumbnail = req.files[0].path;
           filteredDataPayload.message_content = req.files[1].path;
         }
-
-
       }
       if (filteredDataPayload.message_type === "gif") {
         if (process.env.MEDIAFLOW == "S3") {
@@ -110,14 +175,11 @@ async function sendMessage(req, res) {
               { success: false },
               "file_media_1 is required",
               false,
-              true
-            )
+              true,
+            );
           }
           filteredDataPayload.message_content = req.body.file_media_1;
-
-        }
-        else {
-
+        } else {
           filteredDataPayload.message_content = req.files[0].path;
         }
       }
@@ -129,14 +191,11 @@ async function sendMessage(req, res) {
               { success: false },
               "file_media_1 is required",
               false,
-              true
-            )
+              true,
+            );
           }
           filteredDataPayload.message_content = req.body.file_media_1;
-
-        }
-        else {
-
+        } else {
           filteredDataPayload.message_content = req.files[0].path;
         }
       }
@@ -147,7 +206,7 @@ async function sendMessage(req, res) {
         { success: false },
         "Data is Missing",
         false,
-        true
+        true,
       );
     }
     if (filteredDataPayload.user_id && !filteredDataPayload.chat_id) {
@@ -159,13 +218,13 @@ async function sendMessage(req, res) {
           "User not found",
           false,
           true,
-          404
+          404,
         );
       }
 
       const isChat = await participant_service.alreadyParticipantIndividual(
         user_id,
-        filteredDataPayload.user_id
+        filteredDataPayload.user_id,
       );
 
       if (!isChat) {
@@ -227,6 +286,20 @@ async function sendMessage(req, res) {
           },
         ],
       },
+      {
+        model: Story,
+        required: false,
+        include: [
+          {
+            model: StoryMedia,
+            as: "media",
+          },
+          {
+            model: User,
+            attributes: ["user_id", "full_name", "user_name", "profile_pic"],
+          },
+        ],
+      },
     ];
     const foreignKeysConfig = [
       {
@@ -234,18 +307,21 @@ async function sendMessage(req, res) {
         model: "Social",
         alias_name: "Social",
       },
+      {
+        foreign_key: "story_id",
+        model: "Story",
+        alias_name: "Story",
+      },
     ];
 
     filteredDataPayload.sender_id = user_id;
     const newMessage = await message_service.createMessage(filteredDataPayload);
-    const messageSeenBySender = await message_seen_service.createMessageSeen(
-      {
-        message_seen_status: "seen",
-        message_id: newMessage.message_id,
-        chat_id: filteredDataPayload.chat_id,
-        user_id: glob_user.user_id
-      }
-    )
+    const messageSeenBySender = await message_seen_service.createMessageSeen({
+      message_seen_status: "seen",
+      message_id: newMessage.message_id,
+      chat_id: filteredDataPayload.chat_id,
+      user_id: glob_user.user_id,
+    });
 
     if (newMessage) {
       let NewMessageAfterCreation = await message_service.getMessages(
@@ -255,7 +331,7 @@ async function sendMessage(req, res) {
           page: 1,
           pageSize: 1,
         },
-        foreignKeysConfig
+        foreignKeysConfig,
       );
       const Participants =
         await participant_service.getParticipantWithoutPagenation({
@@ -312,14 +388,12 @@ async function sendMessage(req, res) {
           NewMessageAfterCreation.Records[0].peerUserData = user_data;
           NewMessageAfterCreation.Records[0].unseen_count = 0;
 
-
           socket_service.emitEvent(
             glob_user.socket_id,
             "recieve",
-            NewMessageAfterCreation
+            NewMessageAfterCreation,
           );
         } else {
-
           const is_user = await getUser({
             // user_id: record.dataValues.user_id,
             user_id: peer_user.user_id,
@@ -350,158 +424,154 @@ async function sendMessage(req, res) {
 
           //   }
           // )
-          const messageDeliveredToReciver = await message_seen_service.createMessageSeen(
-            {
+          const messageDeliveredToReciver =
+            await message_seen_service.createMessageSeen({
               message_seen_status: "delivered",
               message_id: newMessage.message_id,
               chat_id: filteredDataPayload.chat_id,
-              user_id: is_user.user_id
-            }
-          )
-          const unseenCount = await message_seen_service.getMessageSeenCount(
-            {
-              andConditions: {
-                chat_id: filteredDataPayload.chat_id,
-                user_id: is_user.user_id
-              },
-              orConditions: {
-                message_seen_status: ["delivered", "sent"],
-
-              },
-            }
-          )
+              user_id: is_user.user_id,
+            });
+          const unseenCount = await message_seen_service.getMessageSeenCount({
+            andConditions: {
+              chat_id: filteredDataPayload.chat_id,
+              user_id: is_user.user_id,
+            },
+            orConditions: {
+              message_seen_status: ["delivered", "sent"],
+            },
+          });
           NewMessageAfterCreation.Records[0].unseen_count = unseenCount.count;
 
-
           if (req.body.message_type == "text") {
-            sendPushNotification(
-              {
-                playerIds: [is_user.device_token],
-                title: `${req.userData.full_name} has sent you a message`,
-                message: NewMessageAfterCreation.Records[0].message_content,
-                large_icon: req.userData.profile_pic,
-                data: {
-                  type: "message",
-                  user_id: req.authData.user_id,
-                  full_name: req.userData.full_name,
-                  profile_pic: req.userData.profile_pic,
-                  chat_id: filteredDataPayload.chat_id,
-                  message_id: NewMessageAfterCreation.Records[0].messa_id
-                }
-              }
-            )
-
+            sendPushNotification({
+              playerIds: [is_user.device_token],
+              title: `${req.userData.full_name} has sent you a message`,
+              message: NewMessageAfterCreation.Records[0].message_content,
+              large_icon: req.userData.profile_pic,
+              data: {
+                type: "message",
+                user_id: req.authData.user_id,
+                full_name: req.userData.full_name,
+                profile_pic: req.userData.profile_pic,
+                chat_id: filteredDataPayload.chat_id,
+                message_id: NewMessageAfterCreation.Records[0].messa_id,
+              },
+            });
           }
 
           if (req.body.message_type == "image") {
-            sendPushNotification(
-              {
-                playerIds: [is_user.device_token],
-                title: `${req.userData.full_name} has Sent you an Image`,
-                message: "Image",
-                large_icon: req.userData.profile_pic,
-                big_picture: NewMessageAfterCreation.Records[0].message_content,
-                data: {
-                  type: "message",
-                  user_id: req.authData.user_id,
-                  full_name: req.userData.full_name,
-                  profile_pic: req.userData.profile_pic,
-                  chat_id: filteredDataPayload.chat_id,
-                  message_id: NewMessageAfterCreation.Records[0].messa_id
-                }
-              }
-            )
-
+            sendPushNotification({
+              playerIds: [is_user.device_token],
+              title: `${req.userData.full_name} has Sent you an Image`,
+              message: "Image",
+              large_icon: req.userData.profile_pic,
+              big_picture: NewMessageAfterCreation.Records[0].message_content,
+              data: {
+                type: "message",
+                user_id: req.authData.user_id,
+                full_name: req.userData.full_name,
+                profile_pic: req.userData.profile_pic,
+                chat_id: filteredDataPayload.chat_id,
+                message_id: NewMessageAfterCreation.Records[0].messa_id,
+              },
+            });
           }
           if (req.body.message_type == "video") {
-            sendPushNotification(
-              {
-                playerIds: [is_user.device_token],
-                title: `${req.userData.full_name} has sent you a video`,
-                message: "Video",
-                large_icon: req.userData.profile_pic,
-                big_picture: NewMessageAfterCreation.Records[0].message_thumbnail,
-                data: {
-                  type: "message",
-                  user_id: req.authData.user_id,
-                  full_name: req.userData.full_name,
-                  profile_pic: req.userData.profile_pic,
-                  chat_id: filteredDataPayload.chat_id,
-                  message_id: NewMessageAfterCreation.Records[0].messa_id
-                }
-              }
-            )
-
+            sendPushNotification({
+              playerIds: [is_user.device_token],
+              title: `${req.userData.full_name} has sent you a video`,
+              message: "Video",
+              large_icon: req.userData.profile_pic,
+              big_picture: NewMessageAfterCreation.Records[0].message_thumbnail,
+              data: {
+                type: "message",
+                user_id: req.authData.user_id,
+                full_name: req.userData.full_name,
+                profile_pic: req.userData.profile_pic,
+                chat_id: filteredDataPayload.chat_id,
+                message_id: NewMessageAfterCreation.Records[0].messa_id,
+              },
+            });
           }
           if (req.body.message_type == "gif") {
-            sendPushNotification(
-              {
-                playerIds: [is_user.device_token],
-                title: `${req.userData.full_name} has sent you gif`,
-                message: "Gif",
-                large_icon: req.userData.profile_pic,
-                big_picture: NewMessageAfterCreation.Records[0].message_content,
-                data: {
-                  type: "message",
-                  user_id: req.authData.user_id,
-                  full_name: req.userData.full_name,
-                  profile_pic: req.userData.profile_pic,
-                  chat_id: filteredDataPayload.chat_id,
-                  message_id: NewMessageAfterCreation.Records[0].messa_id
-                }
-              }
-            )
-
+            sendPushNotification({
+              playerIds: [is_user.device_token],
+              title: `${req.userData.full_name} has sent you gif`,
+              message: "Gif",
+              large_icon: req.userData.profile_pic,
+              big_picture: NewMessageAfterCreation.Records[0].message_content,
+              data: {
+                type: "message",
+                user_id: req.authData.user_id,
+                full_name: req.userData.full_name,
+                profile_pic: req.userData.profile_pic,
+                chat_id: filteredDataPayload.chat_id,
+                message_id: NewMessageAfterCreation.Records[0].messa_id,
+              },
+            });
           }
           if (req.body.message_type == "doc") {
-            sendPushNotification(
-              {
-                playerIds: [is_user.device_token],
-                title: `${req.userData.full_name} has sent you document file`,
-                message: "Document",
-                large_icon: req.userData.profile_pic,
-                big_picture: NewMessageAfterCreation.Records[0].message_content,
-                data: {
-                  type: "message",
-                  user_id: req.authData.user_id,
-                  full_name: req.userData.full_name,
-                  profile_pic: req.userData.profile_pic,
-                  chat_id: filteredDataPayload.chat_id,
-                  message_id: NewMessageAfterCreation.Records[0].messa_id
-                }
-              }
-            )
-
+            sendPushNotification({
+              playerIds: [is_user.device_token],
+              title: `${req.userData.full_name} has sent you document file`,
+              message: "Document",
+              large_icon: req.userData.profile_pic,
+              big_picture: NewMessageAfterCreation.Records[0].message_content,
+              data: {
+                type: "message",
+                user_id: req.authData.user_id,
+                full_name: req.userData.full_name,
+                profile_pic: req.userData.profile_pic,
+                chat_id: filteredDataPayload.chat_id,
+                message_id: NewMessageAfterCreation.Records[0].messa_id,
+              },
+            });
           }
-
 
           socket_service.emitEvent(
             is_user?.socket_id,
             "recieve",
-            NewMessageAfterCreation
+            NewMessageAfterCreation,
           );
           if (req.body.message_type == "social") {
             const notification_social = await social_service.getSocial({
-              social_id: filteredData.social_id
-            })
-            sendPushNotification(
-              {
-                playerIds: [is_user.device_token],
-                title: `${req.userData.full_name} has sent you a ${notification_social.Records[0].social_type}`,
-                message: `${notification_social.Records[0].social_type}`,
-                large_icon: req.userData.profile_pic,
-                big_picture: notification_social.Records[0].reel_thumbnail,
-                data: {
-                  type: "message",
-                  user_id: req.authData.user_id,
-                  full_name: req.userData.full_name,
-                  profile_pic: req.userData.profile_pic,
-                  chat_id: filteredDataPayload.chat_id,
-                  message_id: NewMessageAfterCreation.Records[0].messa_id
-                }
-              }
-            )
-
+              social_id: filteredData.social_id,
+            });
+            sendPushNotification({
+              playerIds: [is_user.device_token],
+              title: `${req.userData.full_name} has sent you a ${notification_social.Records[0].social_type}`,
+              message: `${notification_social.Records[0].social_type}`,
+              large_icon: req.userData.profile_pic,
+              big_picture: notification_social.Records[0].reel_thumbnail,
+              data: {
+                type: "message",
+                user_id: req.authData.user_id,
+                full_name: req.userData.full_name,
+                profile_pic: req.userData.profile_pic,
+                chat_id: filteredDataPayload.chat_id,
+                message_id: NewMessageAfterCreation.Records[0].messa_id,
+              },
+            });
+          }
+          if (req.body.message_type === "story") {
+            sendPushNotification({
+              playerIds: [is_user.device_token],
+              title: `${req.userData.full_name} has shared a story`,
+              message: filteredDataPayload.story_type_content || "Story",
+              large_icon: req.userData.profile_pic,
+              big_picture:
+                NewMessageAfterCreation?.Records?.[0]?.message_thumbnail || "",
+              data: {
+                type: "message",
+                message_type: "story",
+                story_id: filteredDataPayload.story_id,
+                user_id: req.authData.user_id,
+                full_name: req.userData.full_name,
+                profile_pic: req.userData.profile_pic,
+                chat_id: filteredDataPayload.chat_id,
+                message_id: NewMessageAfterCreation.Records[0].message_id,
+              },
+            });
           }
         }
       }
@@ -512,7 +582,7 @@ async function sendMessage(req, res) {
         newMessage,
         "Message sent Successfully !!",
         true,
-        true
+        true,
       );
     }
 
@@ -522,7 +592,7 @@ async function sendMessage(req, res) {
       "error in sending message",
       true,
       false,
-      400
+      400,
     );
   } catch (error) {
     console.error("Error in sending Message", error);
@@ -531,7 +601,7 @@ async function sendMessage(req, res) {
       { success: false },
       "Something went wrong while messaging!",
       false,
-      true
+      true,
     );
   }
 }

@@ -85,6 +85,9 @@ async function getActiveStoriesByUserIds(userIds = []) {
           [Op.in]: userIds,
         },
         status: true,
+        expires_at: {
+          [Op.gt]: new Date(), // only non-expired stories
+        },
       },
       include: [
         {
@@ -117,6 +120,9 @@ async function getActiveStoriesByUserId(user_id) {
       where: {
         user_id,
         status: true,
+        expires_at: {
+          [Op.gt]: new Date(), // only non-expired stories
+        },
       },
       include: [
         {
@@ -130,7 +136,7 @@ async function getActiveStoriesByUserId(user_id) {
         {
           model: Music,
           as: "music",
-          required: false, // optional
+          required: false,
         },
       ],
       order: [
@@ -138,6 +144,7 @@ async function getActiveStoriesByUserId(user_id) {
         [{ model: StoryMedia, as: "media" }, "order", "ASC"],
       ],
     });
+
     return stories;
   } catch (err) {
     console.error("getActiveStoriesByUserId error:", err);
@@ -151,6 +158,34 @@ async function deleteStory(where) {
   });
 }
 
+async function getStory(where = {}) {
+  try {
+    const story = await Story.findOne({
+      where,
+      include: [
+        {
+          model: StoryMedia,
+          as: "media",
+        },
+        {
+          model: User,
+          attributes: ["user_id", "full_name", "user_name", "profile_pic"],
+        },
+        {
+          model: Music,
+          as: "music",
+          required: false,
+        },
+      ],
+    });
+
+    return story;
+  } catch (err) {
+    console.error("getStory error:", err);
+    throw err;
+  }
+}
+
 module.exports = {
   createStory,
   createStoryMedia,
@@ -158,4 +193,5 @@ module.exports = {
   getActiveStoriesByUserIds,
   getActiveStoriesByUserId,
   deleteStory,
+  getStory,
 };

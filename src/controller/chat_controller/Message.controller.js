@@ -3,13 +3,26 @@ const filterData = require("../../helper/filter.helper");
 const participant_service = require("../../service/repository/Participant.service");
 const message_service = require("../../service/repository/Message.service");
 const message_seen_service = require("../../service/repository/Message_seen.service");
+const { getUser } = require("../../service/repository/user.service");
 const {
-  getUser
-} = require("../../service/repository/user.service");
-const { User, Message, Social, Message_seen , Call } = require("../../../models");
+  User,
+  Message,
+  Social,
+  Message_seen,
+  Call,
+  Story,
+  StoryMedia,
+  Music,
+  Gift,
+} = require("../../../models");
 const { Op, Sequelize } = require("sequelize"); // Ensure you're importing Op
 
-async function markChatMessagesSeen({ chat_id, user_id, message_id, emitEvent }) {
+async function markChatMessagesSeen({
+  chat_id,
+  user_id,
+  message_id,
+  emitEvent,
+}) {
   const where = {
     chat_id,
     user_id,
@@ -20,14 +33,14 @@ async function markChatMessagesSeen({ chat_id, user_id, message_id, emitEvent })
     where.message_id = message_id;
   }
 
-  await message_seen_service.updateMessageSeen(
-    where,
-    { message_seen_status: "seen" }
-  );
-
-  const participants = await participant_service.getParticipantWithoutPagenation({
-    chat_id,
+  await message_seen_service.updateMessageSeen(where, {
+    message_seen_status: "seen",
   });
+
+  const participants =
+    await participant_service.getParticipantWithoutPagenation({
+      chat_id,
+    });
 
   const participantCount = participants.Records.length;
   if (!participantCount) {
@@ -49,7 +62,7 @@ async function markChatMessagesSeen({ chat_id, user_id, message_id, emitEvent })
     group: ["message_id"],
     having: Sequelize.where(
       Sequelize.fn("COUNT", Sequelize.literal('DISTINCT "user_id"')),
-      { [Op.gte]: participantCount }
+      { [Op.gte]: participantCount },
     ),
     raw: true,
   });
@@ -65,13 +78,14 @@ async function markChatMessagesSeen({ chat_id, user_id, message_id, emitEvent })
       message_id: { [Op.in]: fullySeenMessageIds },
       message_seen_status: { [Op.ne]: "seen" },
     },
-    { message_seen_status: "seen" }
+    { message_seen_status: "seen" },
   );
 
   const updatedMessages = updateMessage?.[1] || [];
 
   for (const message of updatedMessages) {
-    const messageData = typeof message.toJSON === "function" ? message.toJSON() : message;
+    const messageData =
+      typeof message.toJSON === "function" ? message.toJSON() : message;
     const sender = await getUser({ user_id: messageData.sender_id });
 
     if (sender?.socket_id) {
@@ -134,28 +148,24 @@ async function typing(socket, data, emitEvent) {
     });
 
     chat_id.forEach(async (element) => {
-      let users
+      let users;
 
       if (element == data.chat_id) {
-
         users = await participant_service.getParticipantWithoutPagenation(
           { chat_id: element },
-          includeOptions
+          includeOptions,
         );
       }
 
       users?.Records.map((chats) => {
-        if (
-          chats.User.user_id != socket.authData.user_id
-        ) {
-          emitEvent(chats.User.socket_id, "typing", data,);
+        if (chats.User.user_id != socket.authData.user_id) {
+          emitEvent(chats.User.socket_id, "typing", data);
         }
       });
     });
   }
 }
 async function chat_list(socket, data, emitEvent) {
-
   const isUser = await getUser({ user_id: socket.authData.user_id });
   if (!isUser) {
     return next(new Error("User not found."));
@@ -209,6 +219,30 @@ async function chat_list(socket, data, emitEvent) {
         {
           model: Social, // Assuming Social is associated with Message
         },
+        {
+          model: Story,
+          required: false,
+          include: [
+            {
+              model: StoryMedia,
+              as: "media",
+            },
+            {
+              model: User,
+              attributes: ["user_id", "full_name", "user_name", "profile_pic"],
+            },
+            {
+              model: Music,
+              as: "music",
+              required: false,
+            },
+          ],
+        },
+
+        {
+          model: Gift,
+          required: false,
+        },
       ],
       order: [["createdAt", "DESC"]], // Order messages by latest createdAt
 
@@ -217,6 +251,11 @@ async function chat_list(socket, data, emitEvent) {
   ];
   const foreignKeysConfig = [
     { foreign_key: "social_id", model: "Social", alias_name: "Social" },
+    {
+      foreign_key: "story_id",
+      model: "Story",
+      alias_name: "Story",
+    },
   ];
   const getChats_of_users =
     await participant_service.getParticipantWithoutPagenation({
@@ -225,7 +264,6 @@ async function chat_list(socket, data, emitEvent) {
 
   if (getChats_of_users.Records.length > 0) {
     const chatIds = getChats_of_users.Records.map((chats) => {
-
       return chats.chat_id;
     });
 
@@ -246,8 +284,8 @@ async function chat_list(socket, data, emitEvent) {
           "profile_verification_status",
           "login_verification_status",
           "socket_id",
-          'updatedAt',
-          'createdAt'
+          "updatedAt",
+          "createdAt",
         ],
       },
     ];
@@ -268,27 +306,23 @@ async function chat_list(socket, data, emitEvent) {
         break;
       }
       const chatId = chatIds[i]; // Get the chat ID for the current iteration
-      const unseenCount = await message_seen_service.getMessageSeenCount(
-        {
-          andConditions: {
-            chat_id: chatId,
-            user_id: isUser.user_id
-          },
-          orConditions: {
-            message_seen_status: ["delivered", "sent"],
-
-          },
-        }
-      )
+      const unseenCount = await message_seen_service.getMessageSeenCount({
+        andConditions: {
+          chat_id: chatId,
+          user_id: isUser.user_id,
+        },
+        orConditions: {
+          message_seen_status: ["delivered", "sent"],
+        },
+      });
 
       const users = await participant_service.getParticipantWithoutPagenation(
         {
           chat_id: chatId,
           user_id: { [Op.ne]: isUser.user_id }, // Exclude the current user
         },
-        includeOptionsUser
+        includeOptionsUser,
       );
-
 
       if (users.Records.length > 0) {
         const PeerUserData = users.Records[0].User;
@@ -297,13 +331,13 @@ async function chat_list(socket, data, emitEvent) {
           { chat_id: chatId },
           includeOptions,
           { page: 1, pageSize: 1 }, // Fetch only the latest message
-          foreignKeysConfig
+          foreignKeysConfig,
         );
 
         if (chats.Records.length > 0) {
-          chats.Records = chats.Records.map(record => ({
+          chats.Records = chats.Records.map((record) => ({
             ...record,
-            unseen_count: unseenCount.count
+            unseen_count: unseenCount.count,
           }));
 
           response.push({
@@ -333,12 +367,13 @@ async function chat_list(socket, data, emitEvent) {
     });
   } else {
     emitEvent(socket.id, "chat_list", {
-      Chats: { Records: [] }, Pagination: {
+      Chats: { Records: [] },
+      Pagination: {
         total_pages: 0,
         total_records: 0,
         current_page: 0,
         records_per_page: 0,
-      }
+      },
     });
   }
 }
@@ -435,21 +470,44 @@ async function message_list(socket, data, emitEvent) {
         },
       ],
     },
-     {
-    model: Call,
-    required: false, // important (not all messages have calls)
-    attributes: [
-      "call_id",
-      "call_type",
-      "call_status",
-      "call_duration",
-      "start_time",
-      "end_time",
-      "users",
-      "current_users",
-      "room_id",
-    ],
-  }
+    {
+      model: Story,
+      required: false,
+      include: [
+        {
+          model: StoryMedia,
+          as: "media",
+        },
+        {
+          model: User,
+          attributes: ["user_id", "full_name", "user_name", "profile_pic"],
+        },
+        {
+          model: Music,
+          as: "music",
+          required: false,
+        },
+      ],
+    },
+    {
+      model: Gift,
+      required: false,
+    },
+    {
+      model: Call,
+      required: false, // important (not all messages have calls)
+      attributes: [
+        "call_id",
+        "call_type",
+        "call_status",
+        "call_duration",
+        "start_time",
+        "end_time",
+        "users",
+        "current_users",
+        "room_id",
+      ],
+    },
   ];
   const participants =
     await participant_service.getParticipantWithoutPagenation({
@@ -459,12 +517,15 @@ async function message_list(socket, data, emitEvent) {
   let listner_socket_id = []; // Initialize the array for socket IDs
   const foreignKeysConfig = [
     { foreign_key: "social_id", model: "Social", alias_name: "Social" },
+    {
+      foreign_key: "story_id",
+      model: "Story",
+      alias_name: "Story",
+    },
   ];
 
   if (participants.Records.length > 0) {
-    let chat_ids = participants.Records.map(
-      (chats) => Number(chats.chat_id)
-    );
+    let chat_ids = participants.Records.map((chats) => Number(chats.chat_id));
 
     if (chat_ids.includes(chatId)) {
       // Create an array of promises
@@ -479,17 +540,18 @@ async function message_list(socket, data, emitEvent) {
         {
           chat_id: chatId,
           [Op.and]: [
-            Sequelize.literal(`NOT ("Message"."deleted_for" @> ARRAY['${isUser.user_id}']::decimal[])`)
-          ]
+            Sequelize.literal(
+              `NOT ("Message"."deleted_for" @> ARRAY['${isUser.user_id}']::decimal[])`,
+            ),
+          ],
         },
         includeOptionsforChat,
         {
           page: data.page || 1,
           pageSize: data.pageSize || 10,
         },
-        foreignKeysConfig
+        foreignKeysConfig,
       );
-
 
       if (chats.Records?.length > 0) {
         emmitdata.push(chats);
@@ -505,8 +567,7 @@ async function message_list(socket, data, emitEvent) {
         // });
 
         emitEvent(socket.id, "message_list", emmitdata[0]);
-      }
-      else {
+      } else {
         emitEvent(socket.id, "message_list", "No Messages Found");
       }
     } else {
@@ -517,7 +578,7 @@ async function message_list(socket, data, emitEvent) {
 async function initial_onlineList(socket, emitEvent) {
   const isUser = await getUser({ user_id: socket.authData.user_id });
   let onlineUsers = [];
-  // 
+  //
   if (!isUser) {
     return next(new Error("User not found."));
   }
@@ -528,7 +589,7 @@ async function initial_onlineList(socket, emitEvent) {
     "otp",
     "id_proof",
     "selfie",
-    "device_token"
+    "device_token",
   ];
 
   keysToRemove.forEach((key) => {
@@ -540,22 +601,43 @@ async function initial_onlineList(socket, emitEvent) {
       model: User,
       as: "User",
       attributes: [
-        "mobile_num", "profile_pic", "dob", "user_id", "full_name", "user_name",
-        "email", "country_code", "socket_id", "login_type", "gender",
-        "country", "state", "city", "bio", "profile_verification_status",
-        "login_verification_status", "is_private", "is_admin", "createdAt", "updatedAt"
+        "mobile_num",
+        "profile_pic",
+        "dob",
+        "user_id",
+        "full_name",
+        "user_name",
+        "email",
+        "country_code",
+        "socket_id",
+        "login_type",
+        "gender",
+        "country",
+        "state",
+        "city",
+        "bio",
+        "profile_verification_status",
+        "login_verification_status",
+        "is_private",
+        "is_admin",
+        "createdAt",
+        "updatedAt",
       ],
     },
   ];
 
-  let getChats_of_users = await participant_service.getParticipantWithoutPagenation({
-    user_id: socket.authData.user_id,
-  })
+  let getChats_of_users =
+    await participant_service.getParticipantWithoutPagenation({
+      user_id: socket.authData.user_id,
+    });
   if (getChats_of_users.Records.length > 0) {
     // Use Promise.all to wait for all async operations to finish
     const promises = getChats_of_users.Records.map(async (chats) => {
       const chat_id = chats.chat_id;
-      let users = await participant_service.getParticipantWithoutPagenation({ chat_id }, includeOptions);
+      let users = await participant_service.getParticipantWithoutPagenation(
+        { chat_id },
+        includeOptions,
+      );
 
       const onlineUsersForChat = users.Records.filter((chats) => {
         const user = chats.User;
@@ -565,9 +647,9 @@ async function initial_onlineList(socket, emitEvent) {
           user.user_id !== socket.authData.user_id
         );
       }).map((chats) => {
-        chats.User.isOnline = true
+        chats.User.isOnline = true;
 
-        return chats.User
+        return chats.User;
       }); // Extract user details
 
       onlineUsers.push(...onlineUsersForChat); // Push users into the main onlineUsers array
@@ -578,17 +660,14 @@ async function initial_onlineList(socket, emitEvent) {
 
     // Emit the list of online users after all users are collected
     if (onlineUsers.length > 0) {
-
       emitEvent(socket.id, "initial_online_user", {
         onlineUsers: onlineUsers,
       });
     } else {
       emitEvent(socket.id, "initial_online_user", { onlineUsers: [] }); // Send empty list if no users found
     }
-  }
-  else {
+  } else {
     emitEvent(socket.id, "initial_online_user", { onlineUsers: [] }); // Send empty list if no users found
-
   }
 }
 
@@ -612,7 +691,10 @@ async function real_time_message_seen(socket, data, emitEvent) {
     });
   }
 
-  const isParticipant = await participant_service.isParticipant(isUser.user_id, chatId);
+  const isParticipant = await participant_service.isParticipant(
+    isUser.user_id,
+    chatId,
+  );
   if (!isParticipant) {
     return emitEvent(socket.id, "real_time_message_seen", {
       success: false,
@@ -656,7 +738,7 @@ async function get_chat_id(socket, data) {
 
     // Create an array of chat_ids
     const chatIds = participants.Records.map(
-      (participant) => participant.chat_id
+      (participant) => participant.chat_id,
     );
 
     // Extract chat_ids from participants
@@ -673,7 +755,7 @@ async function get_chat_id(socket, data) {
           chat_id: chat,
           user_id: participants.Records[0].user_id,
         };
-      })
+      }),
     );
     // Return chat IDs
     return { ChatIds: userChatIds };
@@ -691,14 +773,14 @@ async function delete_for_me(socket, data, emitEvent) {
     if (!isUser) {
       return emitEvent(socket.id, "delete_for_me", {
         success: false,
-        message: "User not found"
+        message: "User not found",
       });
     }
 
     if (!data.chat_id || !data.message_id) {
       return emitEvent(socket.id, "delete_for_me", {
         success: false,
-        message: "chat_id and message_id are required"
+        message: "chat_id and message_id are required",
       });
     }
 
@@ -711,7 +793,7 @@ async function delete_for_me(socket, data, emitEvent) {
     if (!message) {
       return emitEvent(socket.id, "delete_for_me", {
         success: false,
-        message: "Message not found"
+        message: "Message not found",
       });
     }
 
@@ -732,7 +814,7 @@ async function delete_for_me(socket, data, emitEvent) {
     if (deletedFor.includes(String(isUser.user_id))) {
       return emitEvent(socket.id, "delete_for_me", {
         success: false,
-        message: "Message already deleted"
+        message: "Message already deleted",
       });
     }
 
@@ -742,13 +824,13 @@ async function delete_for_me(socket, data, emitEvent) {
     // ✅ SAVE TO DB
     const updated = await message_service.updateMessage(
       { message_id: Number(data.message_id) },
-      { deleted_for: deletedFor }
+      { deleted_for: deletedFor },
     );
 
     if (!updated || updated[0] === 0) {
       return emitEvent(socket.id, "delete_for_me", {
         success: false,
-        message: "Failed to delete message"
+        message: "Failed to delete message",
       });
     }
 
@@ -757,15 +839,14 @@ async function delete_for_me(socket, data, emitEvent) {
     return emitEvent(socket.id, "delete_for_me", {
       success: true,
       message: "Message deleted for you",
-      data: updatedMessage
+      data: updatedMessage,
     });
-
   } catch (err) {
     console.error("delete_for_me error:", err);
 
     emitEvent(socket.id, "delete_for_me", {
       success: false,
-      message: err.message || "Something went wrong"
+      message: err.message || "Something went wrong",
     });
   }
 }
@@ -784,29 +865,46 @@ async function delete_for_everyone(socket, data, emitEvent) {
       return next(new Error("User not found."));
     }
 
-    const message = await message_service.getMessage(
-      data
-    );
+    const message = await message_service.getMessage(data);
 
     if (message && message.sender_id == isUser.user_id) {
-      const deleted_message = await message_service.updateMessage({ message_id: Number(data.message_id) }, { deleted_for_everyone: true, message_content: "This message was deleted." })
+      const deleted_message = await message_service.updateMessage(
+        { message_id: Number(data.message_id) },
+        {
+          deleted_for_everyone: true,
+          message_content: "This message was deleted.",
+        },
+      );
       if (deleted_message.length > 0) {
         const participants =
           await participant_service.getParticipantWithoutPagenation({
             user_id: socket.authData.user_id,
           });
-        participants.Records?.map((socket) => emitEvent(socket.id, "delete_for_everyone", deleted_message[1][0].toJSON()))
-        emitEvent(socket.id, "delete_for_everyone", deleted_message[1][0].toJSON())
+        participants.Records?.map((socket) =>
+          emitEvent(
+            socket.id,
+            "delete_for_everyone",
+            deleted_message[1][0].toJSON(),
+          ),
+        );
+        emitEvent(
+          socket.id,
+          "delete_for_everyone",
+          deleted_message[1][0].toJSON(),
+        );
       }
-    }
-    else {
-      return emitEvent(success = false, socket.id, "delete_for_everyone", "You are not the sender of this message")
+    } else {
+      return emitEvent(
+        (success = false),
+        socket.id,
+        "delete_for_everyone",
+        "You are not the sender of this message",
+      );
     }
   } catch (err) {
     console.log(err);
     throw new Error(err.message || "Failed to delete the message.");
   }
-
 }
 
 async function unsend_message(socket, data, emitEvent) {
@@ -855,7 +953,7 @@ async function unsend_message(socket, data, emitEvent) {
         deleted_for_everyone: true,
         message_content: "This message was unsent.",
         unsend_status: true,
-      }
+      },
     );
 
     if (!updated || updated[0] === 0) {
@@ -876,17 +974,12 @@ async function unsend_message(socket, data, emitEvent) {
     // Emit to all users in that chat
     participants.Records.forEach((participant) => {
       if (participant.User?.socket_id) {
-        emitEvent(
-          participant.User.socket_id,
-          "unsend_message",
-          updatedMessage
-        );
+        emitEvent(participant.User.socket_id, "unsend_message", updatedMessage);
       }
     });
 
     // Also emit to sender (safe)
     emitEvent(socket.id, "unsend_message", updatedMessage);
-
   } catch (error) {
     console.error("Unsend message error:", error);
 
@@ -906,5 +999,5 @@ module.exports = {
   real_time_message_seen,
   delete_for_me,
   delete_for_everyone,
-  unsend_message
+  unsend_message,
 };

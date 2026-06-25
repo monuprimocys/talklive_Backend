@@ -1205,6 +1205,23 @@ async function getFeedReports(pagination = { page: 1, pageSize: 20 }) {
   }
 }
 
+async function getFeedById(feed_id) {
+  try {
+    const feed = await Feed.findOne({
+      where: {
+        feed_id,
+        status: true,
+        deleted_by_user: false,
+      },
+    });
+
+    return feed;
+  } catch (err) {
+    console.error("getFeedById error:", err);
+    throw err;
+  }
+}
+
 module.exports = {
   createFeed,
   getFeed,
@@ -1230,4 +1247,5 @@ module.exports = {
   getFeedReports,
   getFeedPostsAdminservice,
   getFeedByIdAdmin,
+  getFeedById,
 };

@@ -14,7 +14,8 @@ module.exports = (sequelize, DataTypes) => {
     },
     message_content: {
       type: DataTypes.TEXT,
-      allowNull: false,
+      allowNull: true,
+      defaultValue: "",
       get() {
         const message_type = this.getDataValue("message_type");
         const rawValue = this.getDataValue("message_content");
@@ -24,10 +25,13 @@ module.exports = (sequelize, DataTypes) => {
         if (rawValue === "This message was deleted.") return rawValue;
 
         if (["image", "video", "gif", "doc"].includes(message_type)) {
-          return formatMediaUrl(rawValue, "uploads/not-found-images/group-image.png");
+          return formatMediaUrl(
+            rawValue,
+            "uploads/not-found-images/group-image.png",
+          );
         }
         return rawValue;
-      }
+      },
     },
 
     message_thumbnail: {
@@ -39,7 +43,10 @@ module.exports = (sequelize, DataTypes) => {
         const rawValue = this.getDataValue("message_thumbnail");
 
         if (message_type === "video") {
-          return formatMediaUrl(rawValue, "uploads/not-found-images/group-image.png");
+          return formatMediaUrl(
+            rawValue,
+            "uploads/not-found-images/group-image.png",
+          );
         }
         return rawValue;
       },
@@ -81,6 +88,27 @@ module.exports = (sequelize, DataTypes) => {
         }
       },
     },
+
+    story_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      onDelete: "CASCADE",
+      get() {
+        const story = this.getDataValue("story_id");
+        return story === null ? 0 : story;
+      },
+    },
+
+    gift_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+
+    story_type_content: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: "",
+    },
     deleted_for: {
       type: DataTypes.ARRAY(DataTypes.DECIMAL),
       allowNull: true,
@@ -97,8 +125,6 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: false,
     },
-
-
   });
 
   // sender_id
@@ -132,6 +158,12 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 0,
       onDelete: "CASCADE",
     });
+    Message.belongsTo(models.Story, {
+      foreignKey: "story_id",
+      allowNull: true,
+      defaultValue: 0,
+      onDelete: "CASCADE",
+    });
 
     Message.hasMany(models.Message, {
       as: "Replies",
@@ -140,7 +172,9 @@ module.exports = (sequelize, DataTypes) => {
     Message.hasMany(models.Message_seen, {
       foreignKey: "message_id",
       onDelete: "CASCADE",
-
+    });
+    Message.belongsTo(models.Gift, {
+      foreignKey: "gift_id",
     });
   };
 
