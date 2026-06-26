@@ -99,6 +99,16 @@ module.exports = (sequelize, DataTypes) => {
       },
     },
 
+    feed_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      onDelete: "CASCADE",
+      get() {
+        const feed = this.getDataValue("feed_id");
+        return feed === null ? 0 : feed;
+      },
+    },
+
     gift_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -160,6 +170,12 @@ module.exports = (sequelize, DataTypes) => {
     });
     Message.belongsTo(models.Story, {
       foreignKey: "story_id",
+      allowNull: true,
+      defaultValue: 0,
+      onDelete: "CASCADE",
+    });
+    Message.belongsTo(models.Feed, {
+      foreignKey: "feed_id",
       allowNull: true,
       defaultValue: 0,
       onDelete: "CASCADE",

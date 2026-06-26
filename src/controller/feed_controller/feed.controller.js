@@ -19,12 +19,12 @@ const {
   addFeedSave,
   removeFeedSave,
   getUserSavedFeeds,
-  extractHashtags,
   extractMentions,
   reportFeed,
   getFeedReports,
   getFeedPostsAdminservice,
   getFeedByIdAdmin,
+  getFeedByIdnew,
 } = require("../../service/repository/Feed.service");
 const { getUser } = require("../../service/repository/user.service");
 const {
@@ -36,6 +36,7 @@ const {
   isFollow,
   getFollow,
 } = require("../../service/repository/Follow.service");
+const { extractHashtags, saveHashtags } = require("../../service/repository/hashtag.service");
 const { Op, Sequelize } = require("sequelize");
 
 function parseBoolean(value) {
@@ -291,6 +292,8 @@ async function createFeedPost(req, res) {
     /* ---------- CREATE FEED ---------- */
     const feed = await createFeed(filteredData);
 
+    await saveHashtags(filteredData.hashtags);
+
     if (!feed) {
       return generalResponse(
         res,
@@ -414,7 +417,6 @@ async function createFeedPost(req, res) {
     return generalResponse(res, {}, "Something went wrong", false, true, 500);
   }
 }
-
 /**
  * Get feed posts (feed feed, not reels)
  * POST /api/feed/get-feed
@@ -648,7 +650,8 @@ async function getFeedPostDetail(req, res) {
       return generalResponse(res, {}, "Invalid feed ID", false, true, 400);
     }
 
-    const feed = await getFeedById(parseInt(feed_id));
+    // const feed = await getFeedById(parseInt(feed_id));
+    const feed = await getFeedByIdnew(parseInt(feed_id), req.authData.user_id);
 
     if (!feed) {
       return generalResponse(res, {}, "Feed post not found", false, true, 404);
@@ -1346,7 +1349,9 @@ async function getUserSavedFeedsController(req, res) {
  */
 async function getMyFeeds(req, res) {
   try {
-    const { page = 1, pageSize = 10, user_id } = req.body;
+    const { page = 1, pageSize = 10 } = req.body;
+
+    const user_id = req.authData.user_id;
 
     if (!user_id) {
       return generalResponse(res, {}, "Invalid user token", false, true, 401);

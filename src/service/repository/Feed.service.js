@@ -34,138 +34,6 @@ async function createFeed(feedPayload) {
  * @param {Array} order - Sort order
  * @returns {Promise<Object>} Feed posts with pagination info
  */
-async function getFeedold(
-  filterPayload = {},
-  pagination = { page: 1, pageSize: 10 },
-  excludedUserIds = [],
-  order = [["createdAt", "DESC"]],
-  user_id,
-  latitude = null,
-  longitude = null,
-) {
-  try {
-    const { page = 1, pageSize = 10 } = pagination;
-    const offset = (Number(page) - 1) * Number(pageSize);
-    const limit = Number(pageSize);
-
-    // Build where condition
-    let whereCondition = {
-      ...filterPayload,
-      deleted_by_user: false,
-      status: true,
-    };
-
-    // Exclude specific users if provided
-    if (excludedUserIds.length > 0) {
-      whereCondition.user_id = {
-        [Op.notIn]: excludedUserIds,
-      };
-    }
-
-    // Handle hashtag search
-    if (filterPayload.hashtag) {
-      delete whereCondition.hashtag;
-      const searchTag = filterPayload.hashtag.toLowerCase();
-      whereCondition[Op.and] = Sequelize.literal(`
-        EXISTS (
-          SELECT 1 FROM unnest("hashtags") AS tag 
-          WHERE LOWER(tag) LIKE '%${searchTag}%'
-        )
-      `);
-    }
-
-    // Handle username search
-    let includeOptions = [];
-    if (filterPayload.user_name) {
-      delete whereCondition.user_name;
-      includeOptions = [
-        {
-          model: User,
-          where: {
-            user_name: {
-              [Op.like]: `%${filterPayload.user_name}%`,
-            },
-          },
-          attributes: ["user_id", "user_name", "full_name", "profile_pic"],
-          required: true,
-        },
-      ];
-    } else {
-      includeOptions = [
-        {
-          model: User,
-          attributes: ["user_id", "user_name", "full_name", "profile_pic"],
-        },
-      ];
-    }
-
-    // Include media, likes count, comments count
-    includeOptions.push({
-      model: FeedMedia,
-      as: "media",
-      attributes: [
-        "feed_media_id",
-        "media_url",
-        "media_type",
-        "thumbnail_url",
-        "duration",
-        "width",
-        "height",
-        "order",
-      ],
-    });
-
-    const { count, rows } = await Feed.findAndCountAll({
-      where: whereCondition,
-      attributes: {
-        include: [
-          [
-            Sequelize.literal(`
-          EXISTS (
-            SELECT 1 FROM "FeedLikes" AS fl
-            WHERE fl.feed_id = "Feed"."feed_id"
-            AND fl.user_id = ${Number(user_id)}
-          )
-        `),
-            "is_liked",
-          ],
-          [
-            Sequelize.literal(`
-          EXISTS (
-            SELECT 1 FROM "FeedSaves" AS fs
-            WHERE fs.feed_id = "Feed"."feed_id"
-            AND fs.user_id = ${Number(user_id)}
-          )
-        `),
-            "is_saved",
-          ],
-        ],
-      },
-      include: includeOptions,
-      order: order,
-      offset: offset,
-      limit: limit,
-      distinct: true,
-      subQuery: false,
-    });
-
-    const totalPages = Math.ceil(count / limit);
-
-    return {
-      Records: rows,
-      Pagination: {
-        total_records: count,
-        total_pages: totalPages,
-        current_page: Number(page),
-        records_per_page: limit,
-      },
-    };
-  } catch (error) {
-    console.error("Error fetching Feed:", error);
-    throw error;
-  }
-}
-
 async function getFeed(
   filterPayload = {},
   pagination = { page: 1, pageSize: 10 },
@@ -355,6 +223,171 @@ async function getFeed(
       offset,
       limit,
 
+      distinct: true,
+      subQuery: false,
+    });
+
+    // Fetch mentioned users details
+    const mentionedUserIds = [
+      ...new Set(rows.flatMap((feed) => feed.mentioned_users || [])),
+    ];
+
+    let userMap = {};
+
+    if (mentionedUserIds.length) {
+      const mentionedUsers = await User.findAll({
+        where: {
+          user_id: {
+            [Op.in]: mentionedUserIds,
+          },
+        },
+        attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+      });
+
+      userMap = mentionedUsers.reduce((acc, user) => {
+        acc[user.user_id] = user.toJSON();
+        return acc;
+      }, {});
+    }
+
+    const updatedRows = rows.map((feed) => {
+      const data = feed.toJSON();
+
+      data.mentioned_users = (data.mentioned_users || [])
+        .map((id) => userMap[id])
+        .filter(Boolean);
+
+      return data;
+    });
+
+    const totalPages = Math.ceil(count / limit);
+
+    return {
+      Records: updatedRows,
+      Pagination: {
+        total_records: count,
+        total_pages: totalPages,
+        current_page: Number(page),
+        records_per_page: limit,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching Feed:", error);
+    throw error;
+  }
+}
+
+async function getFeedold(
+  filterPayload = {},
+  pagination = { page: 1, pageSize: 10 },
+  excludedUserIds = [],
+  order = [["createdAt", "DESC"]],
+  user_id,
+  latitude = null,
+  longitude = null,
+) {
+  try {
+    const { page = 1, pageSize = 10 } = pagination;
+    const offset = (Number(page) - 1) * Number(pageSize);
+    const limit = Number(pageSize);
+
+    // Build where condition
+    let whereCondition = {
+      ...filterPayload,
+      deleted_by_user: false,
+      status: true,
+    };
+
+    // Exclude specific users if provided
+    if (excludedUserIds.length > 0) {
+      whereCondition.user_id = {
+        [Op.notIn]: excludedUserIds,
+      };
+    }
+
+    // Handle hashtag search
+    if (filterPayload.hashtag) {
+      delete whereCondition.hashtag;
+      const searchTag = filterPayload.hashtag.toLowerCase();
+      whereCondition[Op.and] = Sequelize.literal(`
+        EXISTS (
+          SELECT 1 FROM unnest("hashtags") AS tag 
+          WHERE LOWER(tag) LIKE '%${searchTag}%'
+        )
+      `);
+    }
+
+    // Handle username search
+    let includeOptions = [];
+    if (filterPayload.user_name) {
+      delete whereCondition.user_name;
+      includeOptions = [
+        {
+          model: User,
+          where: {
+            user_name: {
+              [Op.like]: `%${filterPayload.user_name}%`,
+            },
+          },
+          attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+          required: true,
+        },
+      ];
+    } else {
+      includeOptions = [
+        {
+          model: User,
+          attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+        },
+      ];
+    }
+
+    // Include media, likes count, comments count
+    includeOptions.push({
+      model: FeedMedia,
+      as: "media",
+      attributes: [
+        "feed_media_id",
+        "media_url",
+        "media_type",
+        "thumbnail_url",
+        "duration",
+        "width",
+        "height",
+        "order",
+      ],
+    });
+
+    const { count, rows } = await Feed.findAndCountAll({
+      where: whereCondition,
+      attributes: {
+        include: [
+          [
+            Sequelize.literal(`
+          EXISTS (
+            SELECT 1 FROM "FeedLikes" AS fl
+            WHERE fl.feed_id = "Feed"."feed_id"
+            AND fl.user_id = ${Number(user_id)}
+          )
+        `),
+            "is_liked",
+          ],
+          [
+            Sequelize.literal(`
+          EXISTS (
+            SELECT 1 FROM "FeedSaves" AS fs
+            WHERE fs.feed_id = "Feed"."feed_id"
+            AND fs.user_id = ${Number(user_id)}
+          )
+        `),
+            "is_saved",
+          ],
+        ],
+      },
+      include: includeOptions,
+      order: order,
+      offset: offset,
+      limit: limit,
       distinct: true,
       subQuery: false,
     });
@@ -1222,6 +1255,120 @@ async function getFeedById(feed_id) {
   }
 }
 
+async function getFeedByIdnew(feedId, user_id) {
+  try {
+    const feed = await Feed.findOne({
+      where: {
+        feed_id: feedId,
+        deleted_by_user: false,
+        status: true,
+      },
+
+      attributes: {
+        include: [
+          [
+            Sequelize.literal(`
+              EXISTS (
+                SELECT 1
+                FROM "FeedLikes" fl
+                WHERE fl.feed_id = "Feed"."feed_id"
+                AND fl.user_id = ${Number(user_id || 0)}
+              )
+            `),
+            "is_liked",
+          ],
+          [
+            Sequelize.literal(`
+              EXISTS (
+                SELECT 1
+                FROM "FeedSaves" fs
+                WHERE fs.feed_id = "Feed"."feed_id"
+                AND fs.user_id = ${Number(user_id || 0)}
+              )
+            `),
+            "is_saved",
+          ],
+        ],
+      },
+
+      include: [
+        {
+          model: User,
+          attributes: [
+            "user_id",
+            "user_name",
+            "full_name",
+            "profile_pic",
+            "country",
+          ],
+        },
+        {
+          model: FeedMedia,
+          as: "media",
+          attributes: [
+            "feed_media_id",
+            "media_url",
+            "media_type",
+            "thumbnail_url",
+            "duration",
+            "width",
+            "height",
+            "order",
+          ],
+          separate: true,
+          order: [["order", "ASC"]],
+        },
+        {
+          model: FeedTaggedUser,
+          as: "tagged_users",
+          include: [
+            {
+              model: User,
+              attributes: ["user_id", "user_name", "full_name"],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (feed) {
+      const data = feed.toJSON();
+
+      if (
+        Array.isArray(data.mentioned_users) &&
+        data.mentioned_users.length > 0
+      ) {
+        const mentionedUsers = await User.findAll({
+          where: {
+            user_id: {
+              [Op.in]: data.mentioned_users,
+            },
+          },
+          attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+        });
+
+        const userMap = {};
+        mentionedUsers.forEach((user) => {
+          userMap[user.user_id] = user.toJSON();
+        });
+
+        data.mentioned_users = data.mentioned_users
+          .map((id) => userMap[id])
+          .filter(Boolean);
+      }
+
+      return data;
+    }
+
+    return null;
+
+    return feed;
+  } catch (error) {
+    console.error("Error fetching Feed by ID:", error);
+    throw error;
+  }
+}
+
 module.exports = {
   createFeed,
   getFeed,
@@ -1248,4 +1395,5 @@ module.exports = {
   getFeedPostsAdminservice,
   getFeedByIdAdmin,
   getFeedById,
+  getFeedByIdnew,
 };

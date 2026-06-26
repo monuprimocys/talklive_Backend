@@ -11,7 +11,13 @@ const getHashTags = async (
     const { page = 1, pageSize = 10 } = pagination;
     const offset = (Number(page) - 1) * Number(pageSize);
     const limit = Number(pageSize);
-    
+
+    // if (filterPayload.hashtag_name) {
+    //   const hashtagName = filterPayload.hashtag_name;
+    //   filterPayload.hashtag_name = {
+    //     [Op.like]: `${hashtagName}%`,
+    //   };
+    // }
     if (
       filterPayload.hashtag_name !== undefined &&
       filterPayload.hashtag_name !== null
@@ -354,10 +360,37 @@ function extractHashtags(text) {
   return matches;
 }
 
+async function saveHashtags(hashtags) {
+  if (!hashtags || !hashtags.length) return;
+
+  // Same hashtag ek hi post me multiple baar ho to ek hi baar process karo
+  const uniqueHashtags = [
+    ...new Set(hashtags.map((tag) => tag.trim().toLowerCase())),
+  ];
+
+  for (const tag of uniqueHashtags) {
+    const hashtag = await Hashtag.findOne({
+      where: {
+        hashtag_name: tag,
+      },
+    });
+
+    if (hashtag) {
+      await hashtag.increment("counts");
+    } else {
+      await Hashtag.create({
+        hashtag_name: tag,
+        counts: 1,
+      });
+    }
+  }
+}
+
 module.exports = {
   getHashTags,
   createHashtag,
   updateHashtag,
   extractHashtags,
   getHashtagsWithMinimumReels,
+  saveHashtags,
 };

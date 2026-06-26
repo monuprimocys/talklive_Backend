@@ -14,6 +14,8 @@ const {
   StoryMedia,
   Music,
   Gift,
+  Feed,
+  FeedMedia,
 } = require("../../../models");
 const { Op, Sequelize } = require("sequelize"); // Ensure you're importing Op
 
@@ -238,10 +240,24 @@ async function chat_list(socket, data, emitEvent) {
             },
           ],
         },
-
         {
           model: Gift,
           required: false,
+        },
+        {
+          model: Feed,
+          required: false,
+          include: [
+            {
+              model: User,
+              attributes: ["user_id", "full_name", "user_name", "profile_pic"],
+            },
+            {
+              model: FeedMedia,
+              as: "media",
+              required: false,
+            },
+          ],
         },
       ],
       order: [["createdAt", "DESC"]], // Order messages by latest createdAt
@@ -255,6 +271,11 @@ async function chat_list(socket, data, emitEvent) {
       foreign_key: "story_id",
       model: "Story",
       alias_name: "Story",
+    },
+    {
+      foreign_key: "feed_id",
+      model: "Feed",
+      alias_name: "Feed",
     },
   ];
   const getChats_of_users =
@@ -490,6 +511,21 @@ async function message_list(socket, data, emitEvent) {
       ],
     },
     {
+      model: Feed,
+      required: false,
+      include: [
+        {
+          model: User,
+          attributes: ["user_id", "full_name", "user_name", "profile_pic"],
+        },
+        {
+          model: FeedMedia,
+          as: "media",
+          required: false,
+        },
+      ],
+    },
+    {
       model: Gift,
       required: false,
     },
@@ -521,6 +557,12 @@ async function message_list(socket, data, emitEvent) {
       foreign_key: "story_id",
       model: "Story",
       alias_name: "Story",
+    },
+
+    {
+      foreign_key: "feed_id",
+      model: "Feed",
+      alias_name: "Feed",
     },
   ];
 

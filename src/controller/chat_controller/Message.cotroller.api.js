@@ -16,6 +16,8 @@ const {
   Story,
   StoryMedia,
   Music,
+  Feed,
+  FeedMedia,
 } = require("../../../models");
 const filterData = require("../../helper/filter.helper");
 const {
@@ -41,6 +43,7 @@ async function sendMessage(req, res) {
       "story_id",
       "story_type_content",
       "message_content",
+      "feed_id",
     ];
     allowedMandataryFields = ["message_type"];
     let filteredData;
@@ -130,6 +133,48 @@ async function sendMessage(req, res) {
 
         filteredDataPayload.message_thumbnail =
           story?.media?.[0]?.media_location || "";
+      }
+
+      if (filteredDataPayload.message_type === "feed") {
+        if (!filteredDataPayload.feed_id) {
+          return generalResponse(
+            res,
+            { success: false },
+            "feed_id is required",
+            false,
+            true,
+          );
+        }
+
+        const feed = await Feed.findOne({
+          where: {
+            feed_id: filteredDataPayload.feed_id,
+            status: true,
+          },
+          include: [
+            {
+              model: FeedMedia,
+              as: "media",
+            },
+            {
+              model: User,
+              attributes: ["user_id", "full_name", "user_name", "profile_pic"],
+            },
+          ],
+        });
+
+        if (!feed) {
+          return generalResponse(
+            res,
+            { success: false },
+            "Feed not found",
+            false,
+            true,
+          );
+        }
+
+        filteredDataPayload.message_thumbnail =
+          feed?.media?.[0]?.media_location || "";
       }
 
       if (filteredDataPayload.message_type === "image") {
@@ -300,6 +345,22 @@ async function sendMessage(req, res) {
           },
         ],
       },
+
+      {
+        model: Feed,
+        required: false,
+        include: [
+          {
+            model: User,
+            attributes: ["user_id", "full_name", "user_name", "profile_pic"],
+          },
+          {
+            model: FeedMedia,
+            as: "media",
+            required: false,
+          },
+        ],
+      },
     ];
     const foreignKeysConfig = [
       {
@@ -311,6 +372,11 @@ async function sendMessage(req, res) {
         foreign_key: "story_id",
         model: "Story",
         alias_name: "Story",
+      },
+      {
+        foreign_key: "feed_id",
+        model: "Feed",
+        alias_name: "Feed",
       },
     ];
 
@@ -565,6 +631,27 @@ async function sendMessage(req, res) {
                 type: "message",
                 message_type: "story",
                 story_id: filteredDataPayload.story_id,
+                user_id: req.authData.user_id,
+                full_name: req.userData.full_name,
+                profile_pic: req.userData.profile_pic,
+                chat_id: filteredDataPayload.chat_id,
+                message_id: NewMessageAfterCreation.Records[0].message_id,
+              },
+            });
+          }
+
+          if (req.body.message_type === "feed") {
+            sendPushNotification({
+              playerIds: [is_user.device_token],
+              title: `${req.userData.full_name} has shared a post`,
+              message: "Feed",
+              large_icon: req.userData.profile_pic,
+              big_picture:
+                NewMessageAfterCreation?.Records?.[0]?.message_thumbnail || "",
+              data: {
+                type: "message",
+                message_type: "feed",
+                feed_id: filteredDataPayload.feed_id,
                 user_id: req.authData.user_id,
                 full_name: req.userData.full_name,
                 profile_pic: req.userData.profile_pic,

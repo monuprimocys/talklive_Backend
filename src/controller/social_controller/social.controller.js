@@ -19,6 +19,7 @@ const {
   createHashtag,
   updateHashtag,
   extractHashtags,
+  saveHashtags,
 } = require("../../service/repository/hashtag.service");
 const { getLike } = require("../../service/repository/Like.service");
 const { createMedia } = require("../../service/repository/Media.service");
@@ -196,6 +197,8 @@ async function uploadSocial(req, res) {
     if (social_type === "post") {
       const post = await createSocial(filteredData);
 
+      await saveHashtags(filteredData.hashtag);
+
       if (!post) {
         return generalResponse(res, {}, "Failed to Upload post", false, true);
       }
@@ -245,6 +248,8 @@ async function uploadSocial(req, res) {
       filteredData.reel_thumbnail = post_media;
 
       const reel = await createSocial(filteredData);
+
+      await saveHashtags(filteredData.hashtag);
       if (!reel) {
         return generalResponse(res, {}, "Failed to Upload reel", false, true);
       }
@@ -528,6 +533,7 @@ async function showSocials(req, res) {
     );
   }
 }
+
 async function getSocialsOfFollowers(req, res) {
   try {
     const user_id = req.authData.user_id;
