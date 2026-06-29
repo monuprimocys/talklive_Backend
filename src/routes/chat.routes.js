@@ -17,5 +17,11 @@ router.use(authMiddleware)
 router.post("/send-message", upload.any(), moderationMiddleware, message_controller_api.sendMessage);
 router.post("/forward-message", forwardMessage);
 
+router.post(
+    "/request-status",
+    authMiddleware,
+    message_controller_api.updateRequestStatus
+);
+
 
 module.exports = router;

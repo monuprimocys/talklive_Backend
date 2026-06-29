@@ -36,7 +36,10 @@ const {
   isFollow,
   getFollow,
 } = require("../../service/repository/Follow.service");
-const { extractHashtags, saveHashtags } = require("../../service/repository/hashtag.service");
+const {
+  extractHashtags,
+  saveHashtags,
+} = require("../../service/repository/hashtag.service");
 const { Op, Sequelize } = require("sequelize");
 
 function parseBoolean(value) {
@@ -1358,7 +1361,8 @@ async function getMyFeeds(req, res) {
     }
 
     const filterPayload = {
-      user_id: Number(user_id),
+      // user_id: Number(user_id),
+      user_id: req.body.user_id || req.authData.user_id,
       status: true,
       deleted_by_user: false,
     };
@@ -1391,7 +1395,6 @@ async function getMyFeeds(req, res) {
     );
   }
 }
-
 /**
  * Add a reply to a feed comment
  * POST /api/feed/add-reply

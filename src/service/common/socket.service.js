@@ -1,4 +1,3 @@
-
 const { updateUser, getUser } = require("../repository/user.service");
 const {
   getParticipantWithoutPagenation,
@@ -8,20 +7,46 @@ const filterData = require("../../helper/filter.helper");
 const {
   typing,
   chat_list,
+  request_list,
   message_list,
   get_chat_id,
   real_time_message_seen,
   initial_onlineList,
   delete_for_everyone,
   delete_for_me,
-  unsend_message
+  unsend_message,
 } = require("../../controller/chat_controller/Message.controller");
-const { start_live, leave_live, stop_live, join_live, activity_on_live, request_to_be_host, leave_live_as_host, accept_request_for_new_host, start_battle, join_battle, stop_battle } = require("../../controller/Live_controller/Live.controller");
-const { leave_battle, activity_on_battle, challenge_user_for_battle, join_as_challenged_user } = require("../../controller/Battle_Controller/Battle.controller");
-const { acceptCall } = require("../../controller/call_controller/accept_call.socket.controller");
-const { declineCall } = require("../../controller/call_controller/decline_call.socket.controller");
-const { leaveCall } = require("../../controller/call_controller/leave_call.socket.controller");
-const { call_Changes } = require("../../controller/call_controller/call_changes.socket.controller");
+const {
+  start_live,
+  leave_live,
+  stop_live,
+  join_live,
+  activity_on_live,
+  request_to_be_host,
+  leave_live_as_host,
+  accept_request_for_new_host,
+  start_battle,
+  join_battle,
+  stop_battle,
+} = require("../../controller/Live_controller/Live.controller");
+const {
+  leave_battle,
+  activity_on_battle,
+  challenge_user_for_battle,
+  join_as_challenged_user,
+} = require("../../controller/Battle_Controller/Battle.controller");
+const {
+  acceptCall,
+} = require("../../controller/call_controller/accept_call.socket.controller");
+const {
+  declineCall,
+} = require("../../controller/call_controller/decline_call.socket.controller");
+const {
+  leaveCall,
+} = require("../../controller/call_controller/leave_call.socket.controller");
+const {
+  call_Changes,
+} = require("../../controller/call_controller/call_changes.socket.controller");
 
 let io;
 
@@ -35,6 +60,10 @@ const initSocket = (serverwithsockets) => {
     // Example: Listen for a custom event
     listenToEvent(socket, "chat_list", (data) => {
       chat_list(socket, data, emitEvent);
+    });
+
+    listenToEvent(socket, "request_list", (data) => {
+      request_list(socket, data, emitEvent);
     });
 
     listenToEvent(socket, "message_list", (data) => {
@@ -79,7 +108,14 @@ const initSocket = (serverwithsockets) => {
       request_to_be_host(socket, data, emitEvent, joinRoom, emitToRoom);
     });
     listenToEvent(socket, "accept_request_for_new_host", (data) => {
-      accept_request_for_new_host(socket, data, emitEvent, joinRoom, emitToRoom, io);
+      accept_request_for_new_host(
+        socket,
+        data,
+        emitEvent,
+        joinRoom,
+        emitToRoom,
+        io,
+      );
     });
     listenToEvent(socket, "leave_live_as_host", (data) => {
       leave_live_as_host(socket, data, emitEvent, leaveRoom, emitToRoom);
@@ -110,13 +146,12 @@ const initSocket = (serverwithsockets) => {
       leave_live_as_host(socket, data, emitEvent, leaveRoom, emitToRoom);
     });
 
-
     //  Call Realted Values
 
-     listenToEvent(socket, "accept_call", (data) => {
+    listenToEvent(socket, "accept_call", (data) => {
       acceptCall(socket, data, emitEvent, emitToRoom, joinRoom);
     });
-      listenToEvent(socket, "decline_call", (data) => {
+    listenToEvent(socket, "decline_call", (data) => {
       declineCall(socket, data, emitEvent, emitToRoom);
     });
     listenToEvent(socket, "leave_call", (data) => {
@@ -148,7 +183,7 @@ const initSocket = (serverwithsockets) => {
         "socket_id",
       ];
       const userWithSelectedFields = filterData(isUser.toJSON(), attributes);
-      userWithSelectedFields.isOnline = false
+      userWithSelectedFields.isOnline = false;
       const includeOptions = [
         {
           model: User,
@@ -174,13 +209,13 @@ const initSocket = (serverwithsockets) => {
             "is_private",
             "is_admin",
             "createdAt",
-            "updatedAt"
+            "updatedAt",
           ],
         },
       ];
       const getChats_of_users = await getParticipantWithoutPagenation(
         { user_id: isUser.user_id },
-        includeOptions
+        includeOptions,
       );
       if (getChats_of_users.Records.length > 0) {
         getChats_of_users.Records.map((chats) => {
@@ -188,14 +223,14 @@ const initSocket = (serverwithsockets) => {
         }).forEach(async (element) => {
           let users = await getParticipantWithoutPagenation(
             { chat_id: element },
-            includeOptions
+            includeOptions,
           );
           users.Records.map((chats) => {
             // if (chats.dataValues.User.dataValues.user_id != updatedUser)
             emitEvent(
               chats.User.socket_id,
               "offline_user",
-              userWithSelectedFields
+              userWithSelectedFields,
             );
           });
         });
@@ -227,7 +262,6 @@ const listenToEvent = (socket, event, callback) => {
 };
 const listenToEventwithAck = (socket, event, handler) => {
   socket.on(event, (data, clientCallback) => {
-
     if (handler) {
       handler(socket, data)
         .then((result) => {
@@ -267,7 +301,7 @@ const joinRoom = (socket, roomId) => {
     socket.join(roomId);
     // console.log(`Socket ${socket.id} joined room: ${roomId}`);
   } else {
-    console.warn('Socket.io not initialized');
+    console.warn("Socket.io not initialized");
   }
 };
 
@@ -276,7 +310,7 @@ const leaveRoom = (socket, roomId) => {
     socket.leave(roomId);
     // console.log(`Socket ${socket.id} left room: ${roomId}`);
   } else {
-    console.warn('Socket.io not initialized');
+    console.warn("Socket.io not initialized");
   }
 };
 const disposeRoom = (roomId) => {
@@ -299,10 +333,9 @@ const disposeRoom = (roomId) => {
       console.warn(`Room ${roomId} not found.`);
     }
   } else {
-    console.warn('Socket.io not initialized');
+    console.warn("Socket.io not initialized");
   }
 };
-
 
 /**
  * Emit an event to a specific room
@@ -315,9 +348,8 @@ const emitToRoom = (roomId, event, data) => {
   if (io) {
     io.to(roomId).emit(event, data);
     // console.log(`Event "${event}" emitted to room: ${roomId} data is ${data}\n `);
-
   } else {
-    console.warn('Socket.io not initialized');
+    console.warn("Socket.io not initialized");
   }
 };
 
@@ -326,7 +358,7 @@ const getRoomMembers = async (roomId) => {
     const sockets = await ioInstance.in(roomId).allSockets();
     return Array.from(sockets);
   } else {
-    console.warn('Socket.io not initialized');
+    console.warn("Socket.io not initialized");
     return [];
   }
 };

@@ -348,6 +348,29 @@ async function chat_list(socket, data, emitEvent) {
       if (users.Records.length > 0) {
         const PeerUserData = users.Records[0].User;
 
+        const chat = await chat_service.getChat({
+          chat_id: chatId,
+        });
+
+        if (!chat) {
+          continue;
+        }
+
+        // if (chat.request_status !== "accepted") {
+        //   continue;
+        // }
+        if (
+          chat.request_status === "pending" &&
+          chat.request_receiver_id == isUser.user_id
+        ) {
+          continue;
+        }
+
+        // Reject ho chuki hai
+        if (chat.request_status === "rejected") {
+          continue;
+        }
+
         const chats = await chat_service.getChats(
           { chat_id: chatId },
           includeOptions,
@@ -364,11 +387,23 @@ async function chat_list(socket, data, emitEvent) {
           response.push({
             Records: chats.Records,
             PeerUserData,
+            chat_info: {
+              chat_id: chat.chat_id,
+              request_status: chat.request_status,
+              request_sender_id: chat.request_sender_id,
+              request_receiver_id: chat.request_receiver_id,
+            },
           });
         } else {
           response.push({
             Records: [],
             PeerUserData,
+            chat_info: {
+              chat_id: chat.chat_id,
+              request_status: chat.request_status,
+              request_sender_id: chat.request_sender_id,
+              request_receiver_id: chat.request_receiver_id,
+            },
           });
         }
       }
@@ -388,6 +423,289 @@ async function chat_list(socket, data, emitEvent) {
     });
   } else {
     emitEvent(socket.id, "chat_list", {
+      Chats: { Records: [] },
+      Pagination: {
+        total_pages: 0,
+        total_records: 0,
+        current_page: 0,
+        records_per_page: 0,
+      },
+    });
+  }
+}
+
+async function request_list(socket, data, emitEvent) {
+  const isUser = await getUser({ user_id: socket.authData.user_id });
+  // if (!isUser) {
+  //   return next(new Error("User not found."));
+  // }
+
+  if (!isUser) {
+    return emitEvent(socket.id, "request_list", {
+      Chats: [],
+      message: "User not found",
+    });
+  }
+  attributes = [
+    "profile_pic",
+    "user_id",
+    "full_name",
+    "user_name",
+    "email",
+    "country_code",
+    "country",
+    "gender",
+    "bio",
+    "profile_verification_status",
+    "login_verification_status",
+    "socket_id",
+  ];
+  let user_data = { ...isUser.toJSON() };
+  const keysToRemove = [
+    "password",
+    "otp",
+    "id_proof",
+    "selfie",
+    "device_token",
+  ];
+  keysToRemove.forEach((key) => {
+    user_data = filterData(user_data, key, "key");
+  });
+  const includeOptions = [
+    {
+      model: Message,
+      include: [
+        {
+          model: User, // Assuming User is associated with Message
+          attributes: [
+            "profile_pic",
+            "user_id",
+            "full_name",
+            "user_name",
+            "email",
+            "country_code",
+            "country",
+            "gender",
+            "bio",
+            "profile_verification_status",
+            "login_verification_status",
+            "socket_id",
+          ],
+        },
+        {
+          model: Social, // Assuming Social is associated with Message
+        },
+        {
+          model: Story,
+          required: false,
+          include: [
+            {
+              model: StoryMedia,
+              as: "media",
+            },
+            {
+              model: User,
+              attributes: ["user_id", "full_name", "user_name", "profile_pic"],
+            },
+            {
+              model: Music,
+              as: "music",
+              required: false,
+            },
+          ],
+        },
+        {
+          model: Gift,
+          required: false,
+        },
+        {
+          model: Feed,
+          required: false,
+          include: [
+            {
+              model: User,
+              attributes: ["user_id", "full_name", "user_name", "profile_pic"],
+            },
+            {
+              model: FeedMedia,
+              as: "media",
+              required: false,
+            },
+          ],
+        },
+      ],
+      order: [["createdAt", "DESC"]], // Order messages by latest createdAt
+
+      limit: 1,
+    },
+  ];
+  const foreignKeysConfig = [
+    { foreign_key: "social_id", model: "Social", alias_name: "Social" },
+    {
+      foreign_key: "story_id",
+      model: "Story",
+      alias_name: "Story",
+    },
+    {
+      foreign_key: "feed_id",
+      model: "Feed",
+      alias_name: "Feed",
+    },
+  ];
+  const getChats_of_users =
+    await participant_service.getParticipantWithoutPagenation({
+      user_id: socket.authData.user_id,
+    });
+
+  if (getChats_of_users.Records.length > 0) {
+    const chatIds = getChats_of_users.Records.map((chats) => {
+      return chats.chat_id;
+    });
+
+    const includeOptionsUser = [
+      {
+        model: User,
+        as: "User",
+        attributes: [
+          "profile_pic",
+          "user_id",
+          "full_name",
+          "user_name",
+          "email",
+          "country_code",
+          "country",
+          "gender",
+          "bio",
+          "profile_verification_status",
+          "login_verification_status",
+          "socket_id",
+          "updatedAt",
+          "createdAt",
+        ],
+      },
+    ];
+    let response = [];
+    let total_records = chatIds.length;
+    let currentPage = data?.page || 1;
+    let pageSize = data?.pageSize || 10;
+    let total_pages = Math.ceil(total_records / pageSize);
+    let count = 0; // Initialize count for pagination logic
+
+    // Calculate the range of chat IDs to process for the current page
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+
+    // Loop through the filtered chat IDs within the current page range
+    for (let i = startIndex; i < chatIds.length && count < pageSize; i++) {
+      if (i == endIndex) {
+        break;
+      }
+      const chatId = chatIds[i]; // Get the chat ID for the current iteration
+      const unseenCount = await message_seen_service.getMessageSeenCount({
+        andConditions: {
+          chat_id: chatId,
+          user_id: isUser.user_id,
+        },
+        orConditions: {
+          message_seen_status: ["delivered", "sent"],
+        },
+      });
+
+      const users = await participant_service.getParticipantWithoutPagenation(
+        {
+          chat_id: chatId,
+          user_id: { [Op.ne]: isUser.user_id }, // Exclude the current user
+        },
+        includeOptionsUser,
+      );
+
+      if (users.Records.length > 0) {
+        const PeerUserData = users.Records[0].User;
+
+        const chat = await chat_service.getChat({
+          chat_id: chatId,
+        });
+
+        if (!chat) {
+          continue;
+        }
+
+        if (
+          chat.request_status !== "pending" ||
+          chat.request_receiver_id != isUser.user_id
+        ) {
+          continue;
+        }
+
+        const chats = await chat_service.getChats(
+          { chat_id: chatId },
+          includeOptions,
+          { page: 1, pageSize: 1 }, // Fetch only the latest message
+          foreignKeysConfig,
+        );
+
+        // if (chats.Records.length > 0) {
+        //   chats.Records = chats.Records.map((record) => ({
+        //     ...record,
+        //     unseen_count: unseenCount.count,
+        //   }));
+
+        //   response.push({
+        //     Records: chats.Records,
+        //     PeerUserData,
+        //   });
+        // } else {
+        //   response.push({
+        //     Records: [],
+        //     PeerUserData,
+        //   });
+        // }
+
+        if (chats.Records.length > 0) {
+          chats.Records = chats.Records.map((record) => ({
+            ...record,
+            unseen_count: unseenCount.count,
+          }));
+
+          response.push({
+            Records: chats.Records,
+            PeerUserData,
+            chat_info: {
+              chat_id: chat.chat_id,
+              request_status: chat.request_status,
+              request_sender_id: chat.request_sender_id,
+              request_receiver_id: chat.request_receiver_id,
+            },
+          });
+        } else {
+          response.push({
+            Records: [],
+            PeerUserData,
+            chat_info: {
+              chat_id: chat.chat_id,
+              request_status: chat.request_status,
+              request_sender_id: chat.request_sender_id,
+              request_receiver_id: chat.request_receiver_id,
+            },
+          });
+        }
+      }
+
+      count++; // Increment count for processed chats
+    }
+
+    // Emit the paginated response
+    emitEvent(socket.id, "request_list", {
+      Pagination: {
+        total_pages,
+        total_records,
+        current_page: currentPage,
+        records_per_page: pageSize,
+      },
+      Chats: response,
+    });
+  } else {
+    emitEvent(socket.id, "request_list", {
       Chats: { Records: [] },
       Pagination: {
         total_pages: 0,
@@ -1036,6 +1354,7 @@ module.exports = {
   typing,
   chat_list,
   message_list,
+  request_list,
   initial_onlineList,
   get_chat_id,
   real_time_message_seen,

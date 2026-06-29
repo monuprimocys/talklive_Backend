@@ -23,7 +23,7 @@ async function sendPushNotification({
     message,
     big_picture,
     large_icon,
-    appLogo = "",
+    // appLogo = "",
     data = {},
     broadcast = false
 }) {
@@ -34,7 +34,7 @@ async function sendPushNotification({
         headings: { en: title },
         contents: { en: message },
         data,
-        small_icon: appLogo,
+        // small_icon: appLogo,
         android_channel_id:ANDROID_CHANNEL_ID
     };
     

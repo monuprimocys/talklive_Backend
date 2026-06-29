@@ -274,7 +274,11 @@ async function sendMessage(req, res) {
 
       if (!isChat) {
         const newChat = await chat_service.createChat({
+          // chat_type: filteredDataPayload.chat_type,
           chat_type: filteredDataPayload.chat_type,
+          request_status: "pending",
+          request_sender_id: user_id,
+          request_receiver_id: filteredDataPayload.user_id,
         });
 
         filteredDataPayload.chat_id = newChat.chat_id;
@@ -285,7 +289,37 @@ async function sendMessage(req, res) {
           chat_id: filteredDataPayload.chat_id,
         });
       } else {
+        // filteredDataPayload.chat_id = isChat;
         filteredDataPayload.chat_id = isChat;
+
+        const chat = await chat_service.getChat({
+          chat_id: isChat,
+        });
+
+        // Reject hua hai
+        if (chat.request_status === "rejected") {
+          return generalResponse(
+            res,
+            {},
+            "Message request rejected",
+            false,
+            true,
+          );
+        }
+
+        // Receiver accept kare bina reply nahi bhej sakta
+        if (
+          chat.request_status === "pending" &&
+          user_id === chat.request_receiver_id
+        ) {
+          return generalResponse(
+            res,
+            {},
+            "Please accept the message request first",
+            false,
+            true,
+          );
+        }
       }
     }
     const includeOptionsforChat = [
@@ -399,6 +433,19 @@ async function sendMessage(req, res) {
         },
         foreignKeysConfig,
       );
+
+      // 👇 YAHI ADD KARNA HAI
+      const chatDetails = await chat_service.getChat({
+        chat_id: filteredDataPayload.chat_id,
+      });
+
+      NewMessageAfterCreation.Records[0].chat_info = {
+        chat_id: chatDetails.chat_id,
+        request_status: chatDetails.request_status,
+        request_sender_id: chatDetails.request_sender_id,
+        request_receiver_id: chatDetails.request_receiver_id,
+      };
+
       const Participants =
         await participant_service.getParticipantWithoutPagenation({
           chat_id: newMessage.chat_id,
@@ -693,4 +740,53 @@ async function sendMessage(req, res) {
   }
 }
 
-module.exports = { sendMessage };
+async function updateRequestStatus(req, res) {
+  try {
+    const user_id = req.authData.user_id;
+
+    const { chat_id, request_status } = req.body;
+
+    if (!chat_id || !request_status) {
+      return generalResponse(
+        res,
+        {},
+        "chat_id and request_status are required",
+        false,
+        true,
+      );
+    }
+
+    if (!["accepted", "rejected"].includes(request_status)) {
+      return generalResponse(res, {}, "Invalid request_status", false, true);
+    }
+
+    const chat = await chat_service.getChat({
+      chat_id: chat_id,
+    });
+
+    if (!chat) {
+      return generalResponse(res, {}, "Chat not found", false, true);
+    }
+
+    // Sirf receiver hi update kar sakta hai
+    if (chat.request_receiver_id != user_id) {
+      return generalResponse(res, {}, "Unauthorized", false, true);
+    }
+
+    await chat_service.updateChat({ chat_id }, { request_status });
+
+    return generalResponse(
+      res,
+      {},
+      `Request ${request_status} successfully`,
+      true,
+      true,
+    );
+  } catch (error) {
+    console.log(error);
+
+    return generalResponse(res, {}, "Something went wrong", false, true);
+  }
+}
+
+module.exports = { sendMessage, updateRequestStatus };
