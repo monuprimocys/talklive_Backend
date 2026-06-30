@@ -10,6 +10,7 @@ const {
   User,
   FeedCommentLike,
 } = require("../../../models");
+const { addVerificationStatusToUsers } = require("../../helper/subscription.helper");
 
 /**
  * Create a new feed post
@@ -250,16 +251,37 @@ async function getFeed(
       }, {});
     }
 
-    const updatedRows = rows.map((feed) => {
-      const data = feed.toJSON();
+  // Step 1: Convert rows to JSON
+let feedsData = rows.map((feed) => {
+  const data = feed.toJSON();
 
-      data.mentioned_users = (data.mentioned_users || [])
-        .map((id) => userMap[id])
-        .filter(Boolean);
+  data.mentioned_users = (data.mentioned_users || [])
+    .map((id) => userMap[id])
+    .filter(Boolean);
 
-      return data;
-    });
+  return data;
+});
 
+// Step 2: Collect all users from feed
+let usersList = feedsData.map(f => f.User).filter(Boolean);
+
+// Step 3: Add is_verified to users
+const updatedUsers = await addVerificationStatusToUsers(usersList);
+
+// Step 4: Create map for quick replacement
+const userMapVerified = new Map();
+updatedUsers.forEach(u => {
+  userMapVerified.set(u.user_id, u);
+});
+
+// Step 5: Attach updated user back to feed
+feedsData = feedsData.map(feed => ({
+  ...feed,
+  User: userMapVerified.get(feed.User?.user_id) || feed.User
+}));
+
+// FINAL
+const updatedRows = feedsData;
     const totalPages = Math.ceil(count / limit);
 
     return {

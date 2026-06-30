@@ -42,6 +42,7 @@ const {
   getUser,
   updateUser,
 } = require("../../service/repository/user.service");
+const { addVerificationStatusToUsers } = require("../../helper/subscription.helper");
 const { Op, Sequelize } = require("sequelize");
 
 async function uploadMediaS3(req, res) {
@@ -508,6 +509,16 @@ async function showSocials(req, res) {
           return socialJson;
         }),
       );
+
+      // Add is_verified to each social's User object
+      const socialUsers = socials.Records.map(s => s.User).filter(Boolean);
+      const verifiedUsers = await addVerificationStatusToUsers(socialUsers);
+      const verifiedUserMap = new Map();
+      verifiedUsers.forEach(u => verifiedUserMap.set(u.user_id, u));
+      socials.Records = socials.Records.map(s => ({
+        ...s,
+        User: verifiedUserMap.get(s.User?.user_id) || s.User,
+      }));
 
       return generalResponse(
         res,

@@ -1,4 +1,5 @@
 const { getUsers } = require("../../service/repository/user.service");
+const { addVerificationStatusToUsers, isUserVerified } = require("../../helper/subscription.helper");
 const { generalResponse } = require("../../helper/response.helper");
 const updateFieldsFilter = require("../../helper/updateField.helper");
 const { getblock } = require("../../service/repository/Block.service");
@@ -149,10 +150,13 @@ async function findUser(req, res) {
       (user) => user.user_name && user.user_name.trim() !== "",
     );
 
+    // Add is_verified field to each user record
+    const verifiedRecords = await addVerificationStatusToUsers(filteredRecords);
+
     return generalResponse(
       res,
       {
-        Records: filteredRecords,
+        Records: verifiedRecords,
         Pagination: isUser.Pagination,
       },
       "User Found",
@@ -342,22 +346,14 @@ async function findUser_not_following(req, res) {
         true,
       );
     }
-    // const enrichedUsers = await Promise.all(
-    //     isUser.Records.map(async (user) => {
-    //         const followingCount = await getFollow({ follower_id: user.user_id }, [], { page: 1, pageSize: 1 })
-    //         const followerCount = await getFollow({ user_id: user.user_id }, [], { page: 1, pageSize: 1 })
-    //         const reportCounts = await getReports({ report_to: user.user_id }, pagination = { page: 1, pageSize: 1 })
+    // Add is_verified field to each user record
+    const plainRecords = isUser.Records.map(u => u.toJSON ? u.toJSON() : u);
+    const verifiedRecords = await addVerificationStatusToUsers(plainRecords);
 
-    //         return {
-    //             ...user.toJSON?.() || user,
-    //             followingCount: followingCount.Pagination.total_records,
-    //             followerCount: followerCount.Pagination.total_records,
-    //             reportCounts: reportCounts.Pagination.total_records
-    //         };
-    //     })
-    // );
-
-    return generalResponse(res, isUser, "User Found", true, false);
+    return generalResponse(res, {
+      Records: verifiedRecords,
+      Pagination: isUser.Pagination,
+    }, "User Found", true, false);
   } catch (error) {
     console.error("Error in Findng User", error);
     return generalResponse(
@@ -548,7 +544,7 @@ async function update_notificationList(req, res) {
 async function getPremiumStatus(req, res) {
   try {
     const user_id = req.authData.user_id;
-    
+
     const user = await User.findOne({
       where: { user_id },
       attributes: ['is_premium', 'subscription_expires_at']
@@ -564,8 +560,8 @@ async function getPremiumStatus(req, res) {
       );
     }
 
-    const isPremiumActive = user.is_premium && 
-      user.subscription_expires_at && 
+    const isPremiumActive = user.is_premium &&
+      user.subscription_expires_at &&
       new Date(user.subscription_expires_at) > new Date();
 
     return generalResponse(

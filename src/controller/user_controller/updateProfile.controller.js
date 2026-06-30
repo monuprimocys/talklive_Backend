@@ -13,6 +13,7 @@ const {
   uploadFileToS3,
   getPresignedUploadUrl,
 } = require("../../service/common/s3.service");
+const { isUserVerified } = require("../../helper/subscription.helper");
 
 async function updateProfile(req, res) {
   try {
@@ -239,10 +240,14 @@ async function updateProfile(req, res) {
       });
       const updatedUser = await getUser({ user_id });
 
+      // Add is_verified field
+      const verified = await isUserVerified(user_id);
+      const userResponse = { ...(updatedUser.toJSON ? updatedUser.toJSON() : updatedUser), is_verified: verified };
+
       if (isUpdated.length > 0) {
         return generalResponse(
           res,
-          updatedUser,
+          userResponse,
           "User updated successfully ",
           true,
           false,

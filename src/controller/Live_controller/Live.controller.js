@@ -13,6 +13,7 @@ const { getCoinToCoinTransaction, getCoinToCoinTransaction_withoutPagination, up
 const {
     Live, User, Live_host
 } = require("../../../models");
+const { addVerificationStatusToUsers } = require("../../helper/subscription.helper");
 
 async function start_live(socket, data, emitEvent, joinRoom) {
 
@@ -771,8 +772,39 @@ async function get_live_with_hosts(req, res) {
             };
         })
     );
-    already_live.Pagination.totalCount = already_live_with_follow.length;
-    
+
+    // Add is_verified to each host's User object in nested Live.Live_hosts
+    const allUsers = [];
+    already_live_with_follow.forEach(host => {
+        if (host.User) allUsers.push(host.User);
+        if (host.Live?.Live_hosts) {
+            host.Live.Live_hosts.forEach(lh => {
+                if (lh.User) allUsers.push(lh.User);
+            });
+        }
+    });
+    const verifiedUsers = await addVerificationStatusToUsers(allUsers);
+    const verifiedMap = new Map();
+    verifiedUsers.forEach(u => verifiedMap.set(u.user_id, u));
+    const finalRecords = already_live_with_follow.map(host => {
+        const updated = { ...host };
+        if (updated.User) {
+            updated.User = verifiedMap.get(updated.User.user_id) || updated.User;
+        }
+        if (updated.Live?.Live_hosts) {
+            updated.Live = {
+                ...updated.Live,
+                Live_hosts: updated.Live.Live_hosts.map(lh => ({
+                    ...lh,
+                    User: lh.User ? (verifiedMap.get(lh.User.user_id) || lh.User) : lh.User,
+                })),
+            };
+        }
+        return updated;
+    });
+
+    already_live.Pagination.totalCount = finalRecords.length;
+
 
     console.log("already_live_with_follow", already_live.Pagination);
 
@@ -781,11 +813,11 @@ async function get_live_with_hosts(req, res) {
     return generalResponse(
         res,
         {
-            Records: already_live_with_follow,
+            Records: finalRecords,
             // Pagination: already_live.Pagination
             Pagination: {
                 ...already_live.Pagination,
-            total_records: already_live_with_follow.length
+                total_records: finalRecords.length
             }
         },
         "Live Found",
