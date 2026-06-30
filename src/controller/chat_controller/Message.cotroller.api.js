@@ -18,11 +18,13 @@ const {
   Music,
   Feed,
   FeedMedia,
+  Block,
 } = require("../../../models");
 const filterData = require("../../helper/filter.helper");
 const {
   sendPushNotification,
 } = require("../../service/common/onesignal.service");
+const { Op } = require("sequelize");
 
 async function sendMessage(req, res) {
   try {
@@ -267,6 +269,31 @@ async function sendMessage(req, res) {
         );
       }
 
+      const isBlocked = await Block.findOne({
+        where: {
+          [Op.or]: [
+            {
+              user_id: user_id,
+              blocked_id: filteredDataPayload.user_id,
+            },
+            {
+              user_id: filteredDataPayload.user_id,
+              blocked_id: user_id,
+            },
+          ],
+        },
+      });
+
+      if (isBlocked) {
+        return generalResponse(
+          res,
+          {},
+          "Message cannot be sent because one of the users has blocked the other.",
+          false,
+          true,
+        );
+      }
+
       const isChat = await participant_service.alreadyParticipantIndividual(
         user_id,
         filteredDataPayload.user_id,
@@ -297,14 +324,36 @@ async function sendMessage(req, res) {
         });
 
         // Reject hua hai
+        // if (chat.request_status === "rejected") {
+        //   return generalResponse(
+        //     res,
+        //     {},
+        //     "Message request rejected",
+        //     false,
+        //     true,
+        //   );
+        // }
+
         if (chat.request_status === "rejected") {
-          return generalResponse(
-            res,
-            {},
-            "Message request rejected",
-            false,
-            true,
+          await chat_service.updateChat(
+            { chat_id: chat.chat_id },
+            {
+              request_status: "pending",
+              request_sender_id: user_id,
+              request_receiver_id:
+                user_id === chat.request_sender_id
+                  ? chat.request_receiver_id
+                  : chat.request_sender_id,
+            },
           );
+
+          const updatedChat = await chat_service.getChat({
+            chat_id: chat.chat_id,
+          });
+
+          chat.request_status = updatedChat.request_status;
+          chat.request_sender_id = updatedChat.request_sender_id;
+          chat.request_receiver_id = updatedChat.request_receiver_id;
         }
 
         // Receiver accept kare bina reply nahi bhej sakta

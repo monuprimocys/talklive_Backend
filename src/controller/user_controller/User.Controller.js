@@ -71,7 +71,7 @@ async function findUser(req, res) {
 
     const block1 = await getblock({ user_id: user_id });
     const block2 = await getblock({ blocked_id: user_id });
-    if (block1?.Records?.length > 0 || block1?.Records?.length > 0) {
+    if (block1?.Records?.length > 0 || block2?.Records?.length > 0) {
       block1?.Records?.forEach((blocks) => {
         uniqueIds.add(blocks?.dataValues?.blocked_id);
       });
@@ -110,7 +110,7 @@ async function findUser(req, res) {
       "profile_verification_status",
       "login_verification_status",
     ];
-    const isUser = await getUsers(filteredData, pagination, attributes);
+    const isUser = await getUsers(filteredData, pagination, attributes, excludedUserIds);
 
     if (isUser?.Records?.length <= 0) {
       return generalResponse(
@@ -145,8 +145,15 @@ async function findUser(req, res) {
       }),
     );
 
+    // const filteredRecords = updatedRecords.filter(
+    //   (user) => user.user_name && user.user_name.trim() !== "",
+    // );
+
     const filteredRecords = updatedRecords.filter(
-      (user) => user.user_name && user.user_name.trim() !== "",
+      (user) =>
+        user.user_name &&
+        user.user_name.trim() !== "" &&
+        !excludedUserIds.includes(user.user_id),
     );
 
     return generalResponse(

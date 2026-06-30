@@ -16,6 +16,7 @@ const {
   Gift,
   Feed,
   FeedMedia,
+  Block,
 } = require("../../../models");
 const { Op, Sequelize } = require("sequelize"); // Ensure you're importing Op
 
@@ -863,9 +864,14 @@ async function message_list(socket, data, emitEvent) {
       ],
     },
   ];
+  // const participants =
+  //   await participant_service.getParticipantWithoutPagenation({
+  //     user_id: socket.authData.user_id,
+  //   });
+
   const participants =
     await participant_service.getParticipantWithoutPagenation({
-      user_id: socket.authData.user_id,
+      chat_id: chatId,
     });
   let emmitdata = []; // Initialize an empty array
   let listner_socket_id = []; // Initialize the array for socket IDs
@@ -912,6 +918,47 @@ async function message_list(socket, data, emitEvent) {
         },
         foreignKeysConfig,
       );
+
+      const peerParticipant = participants.Records.find(
+        (p) =>
+          Number(p.chat_id) === Number(chatId) &&
+          Number(p.user_id) !== Number(isUser.user_id),
+      );
+
+      let block_info = {
+        is_blocked: false,
+        blocked_by_me: false,
+        blocked_me: false,
+      };
+
+      if (peerParticipant) {
+        const block = await Block.findOne({
+          where: {
+            [Op.or]: [
+              {
+                user_id: isUser.user_id,
+                blocked_id: peerParticipant.user_id,
+              },
+              {
+                user_id: peerParticipant.user_id,
+                blocked_id: isUser.user_id,
+              },
+            ],
+          },
+        });
+
+        if (block) {
+          block_info.is_blocked = true;
+
+          if (Number(block.user_id) === Number(isUser.user_id)) {
+            block_info.blocked_by_me = true;
+          } else {
+            block_info.blocked_me = true;
+          }
+        }
+      }
+
+      chats.block_info = block_info;
 
       if (chats.Records?.length > 0) {
         emmitdata.push(chats);
