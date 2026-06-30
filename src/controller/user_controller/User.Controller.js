@@ -545,6 +545,52 @@ async function update_notificationList(req, res) {
   }
 }
 
+async function getPremiumStatus(req, res) {
+  try {
+    const user_id = req.authData.user_id;
+    
+    const user = await User.findOne({
+      where: { user_id },
+      attributes: ['is_premium', 'subscription_expires_at']
+    });
+
+    if (!user) {
+      return generalResponse(
+        res,
+        {},
+        "User not found",
+        false,
+        true
+      );
+    }
+
+    const isPremiumActive = user.is_premium && 
+      user.subscription_expires_at && 
+      new Date(user.subscription_expires_at) > new Date();
+
+    return generalResponse(
+      res,
+      {
+        is_premium: user.is_premium,
+        subscription_expires_at: user.subscription_expires_at,
+        is_premium_active: isPremiumActive
+      },
+      "Premium status retrieved successfully",
+      true,
+      false
+    );
+  } catch (error) {
+    console.error("Error in fetching premium status", error);
+    return generalResponse(
+      res,
+      {},
+      "Something went wrong while fetching premium status!",
+      false,
+      true
+    );
+  }
+}
+
 module.exports = {
   findUser,
   findUser_Admin,
@@ -552,4 +598,5 @@ module.exports = {
   update_notificationList,
   findUser_no_auth,
   findUser_not_following,
+  getPremiumStatus,
 };

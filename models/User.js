@@ -289,6 +289,19 @@ module.exports = (sequelize, DataTypes) => {
       validate: {
         min: 0,
       }
+    },
+    revenuecat_customer_id: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    is_premium: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    subscription_expires_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
     }
   }
   );

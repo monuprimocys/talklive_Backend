@@ -2,7 +2,7 @@ const express = require('express');
 const { signupUser, OtpVerification } = require('../controller/user_controller/auth.controller');
 const { updateProfile, getPresignedUrl, getProfilePresignedUrl, } = require('../controller/user_controller/updateProfile.controller');
 const { authMiddleware } = require('../middleware/authMiddleware');
-const { findUser, get_notificationList, update_notificationList, findUser_no_auth, findUser_not_following } = require('../controller/user_controller/User.Controller');
+const { findUser, get_notificationList, update_notificationList, findUser_no_auth, findUser_not_following, getPremiumStatus } = require('../controller/user_controller/User.Controller');
 const router = express.Router();
 
 // No Auth User Routes
@@ -22,6 +22,8 @@ router.post('/update-notification-list', update_notificationList);
 router.post('/get-presigned-url', authMiddleware, getPresignedUrl);
 router.post('/get-profile-presigned-url', getProfilePresignedUrl);
 
+// Premium Status
+router.post('/get-premium-status', getPremiumStatus);
 
 // Admin routes
 router.post('')

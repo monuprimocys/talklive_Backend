@@ -20,6 +20,8 @@ const { Op } = require('sequelize');
 const { getLanguages, createLanguageTranslation } = require("./src/service/repository/Language.service");
 const { default_entries } = require("./src/service/repository/default_entries.service");
 const { likeanalysisadvanced, Like_anaLyzer } = require("./src/controller/like_controller/like.controller");
+const { planService } = require("./src/service/subscription/plan.service")
+const { webhookRoutes } = require("./src/routes/webhook.routes")
 
 let port = process.env.Port;
 // port = 3001;    
@@ -151,6 +153,13 @@ app.use((req, res, next) => {
 
 app.use("/api", indexRoutes);
 
+
+/* ======================
+   WEBHOOK ROUTES
+====================== */
+// Webhook routes (no rate limiting for payment provider callbacks)
+app.use("/webhooks", webhookRoutes);
+
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error(err.stack);
@@ -161,7 +170,7 @@ app.get("*", (req, res) => {
 });
 // Sync database and start server
 db.sequelize.sync({
-    alter: false
+    alter: true
 }).then(async () => {
     const tokenFilePath = path.join(__dirname, "validatedToken.txt");
     if (fs.existsSync(tokenFilePath)) {
@@ -189,6 +198,9 @@ db.sequelize.sync({
         { socket_id: { [Op.ne]: '' } } // Only where socket_id is not empty
     );
     default_entries()
+
+    await planService.syncWithRevenueCat();
+
     console.log("Database Connected ✅!");
     server.listen(port, () => {
         console.log(`Server listening on port ${port}!`);
