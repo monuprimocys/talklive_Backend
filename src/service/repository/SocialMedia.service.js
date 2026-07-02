@@ -1,7 +1,14 @@
 const { Op } = require("sequelize");
 const { Sequelize } = require("sequelize");
 
-const { Social, Media, User, Music, Follow } = require("../../../models");
+const {
+  Social,
+  Media,
+  User,
+  Music,
+  Follow,
+  SocialPin,
+} = require("../../../models");
 
 async function createSocial(socialPayload) {
   try {
@@ -57,6 +64,18 @@ async function getSocial(
       if (searchText) {
         wherecondition.social_desc = {
           [Sequelize.Op.iLike]: `%${searchText}%`,
+        };
+      }
+    }
+
+    if (socialPayload.location !== undefined) {
+      const locationText = socialPayload.location?.trim();
+
+      delete wherecondition.location;
+
+      if (locationText) {
+        wherecondition.location = {
+          [Sequelize.Op.iLike]: `%${locationText}%`,
         };
       }
     }
@@ -417,6 +436,22 @@ async function getFollowerSocials(
   }
 }
 
+async function createPin(data) {
+  return await SocialPin.create(data);
+}
+
+async function deletePin(data) {
+  return await SocialPin.destroy({
+    where: data,
+  });
+}
+
+async function getPin(data) {
+  return await SocialPin.findOne({
+    where: data,
+  });
+}
+
 module.exports = {
   createSocial,
   getSocial,
@@ -424,4 +459,7 @@ module.exports = {
   deleteSocial,
   getSocialCount,
   getFollowerSocials,
+  createPin,
+  deletePin,
+  getPin,
 };

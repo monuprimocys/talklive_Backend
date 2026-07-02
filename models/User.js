@@ -113,7 +113,10 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: "",
       get() {
-        return formatMediaUrl(this.getDataValue("profile_pic"), "uploads/not-found-images/profile-image.png");
+        return formatMediaUrl(
+          this.getDataValue("profile_pic"),
+          "uploads/not-found-images/profile-image.png",
+        );
       },
     },
     id_proof: {
@@ -211,49 +214,49 @@ module.exports = (sequelize, DataTypes) => {
     available_coins: {
       type: DataTypes.BIGINT,
       allowNull: false,
-      defaultValue: 0
+      defaultValue: 0,
     },
     // Bank Related Tasks
     account_name: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: ""
+      defaultValue: "",
     },
     account_number: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: ""
+      defaultValue: "",
     },
 
     bank_name: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: ""
+      defaultValue: "",
     },
     swift_code: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: ""
+      defaultValue: "",
     },
     IFSC_code: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: ""
+      defaultValue: "",
     },
     total_socials: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      defaultValue: 0
+      defaultValue: 0,
     },
     blocked_by_admin: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
-      defaultValue: false
+      defaultValue: false,
     },
     is_deleted: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
-      defaultValue: false
+      defaultValue: false,
     },
     platforms: {
       type: DataTypes.ARRAY(DataTypes.STRING),
@@ -263,7 +266,6 @@ module.exports = (sequelize, DataTypes) => {
         return platforms?.length > 0 ? platforms : [];
       },
     },
-
 
     // Paid Communication Pricing
     message_price: {
@@ -288,10 +290,9 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 0,
       validate: {
         min: 0,
-      }
-    }
-  }
-  );
+      },
+    },
+  });
   User.associate = function (models) {
     User.hasMany(models.Social, {
       foreignKey: "user_id",
@@ -412,28 +413,30 @@ module.exports = (sequelize, DataTypes) => {
     //   onDelete: "CASCADE"
     // });
 
-
-
     User.hasMany(models.Money_coin_transaction, {
       foreignKey: "user_id",
       allowNull: false,
-      onDelete: 'CASCADE'
+      onDelete: "CASCADE",
     });
     User.hasMany(models.Notification, {
       foreignKey: "sender_id",
       as: "notification_sender",
       allowNull: true,
-      onDelete: 'CASCADE'
+      onDelete: "CASCADE",
     });
     User.hasMany(models.Notification, {
       foreignKey: "reciever_id",
       as: "notification_reciever",
       allowNull: true,
-      onDelete: 'CASCADE'
+      onDelete: "CASCADE",
     });
     User.hasMany(models.Live_host, {
       foreignKey: "user_id",
       onDelete: "CASCADE",
+    });
+    User.hasMany(models.SocialPin, {
+      foreignKey: "pin_by",
+      as: "pinned_socials",
     });
 
     // Dynamic_Admins

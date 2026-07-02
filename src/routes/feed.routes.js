@@ -60,6 +60,7 @@ router.post('/upload-media-in-s3', authMiddleware, upload.single('file'), modera
 router.post('/get-feed', authMiddleware, feed_controller.getFeedPosts);
 
 router.post('/search-feed', authMiddleware, feed_controller.searchFeeds);
+router.post('/search-feed-by-location', authMiddleware, feed_controller.searchFeedsByLocation);
 /**
  * @route   GET /api/feed/get-feed/:feed_id
  * @desc    Get a single feed post with all details

@@ -26,33 +26,40 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: "unseen",
     },
-
-   
+    feed_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
   });
   Notification.associate = function (models) {
     Notification.belongsTo(models.User, {
       foreignKey: "sender_id",
       as: "notification_sender",
       allowNull: true,
-      onDelete: 'CASCADE'
-    })
+      onDelete: "CASCADE",
+    });
     Notification.belongsTo(models.User, {
       foreignKey: "reciever_id",
       as: "notification_reciever",
       allowNull: true,
-      onDelete: 'CASCADE'
-    })
+      onDelete: "CASCADE",
+    });
     Notification.belongsTo(models.Social, {
       foreignKey: "social_id",
       allowNull: true,
-      onDelete: 'CASCADE'
-    })
+      onDelete: "CASCADE",
+    });
     Notification.belongsTo(models.Gift, {
       foreignKey: "gift_id",
       allowNull: true,
-      onDelete: 'CASCADE'
-    })
-
-  }
+      onDelete: "CASCADE",
+    });
+    Notification.belongsTo(models.Feed, {
+      foreignKey: "feed_id",
+      as: "feed",
+      allowNull: true,
+      onDelete: "CASCADE",
+    });
+  };
   return Notification;
-}
+};

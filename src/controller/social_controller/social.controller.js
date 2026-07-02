@@ -37,6 +37,9 @@ const {
   deleteSocial,
   updateSocial,
   getFollowerSocials,
+  createPin,
+  deletePin,
+  getPin,
 } = require("../../service/repository/SocialMedia.service");
 const {
   getUser,
@@ -1350,6 +1353,86 @@ async function searchSocials(req, res) {
   }
 }
 
+async function searchSocialsByLocation(req, res) {
+  try {
+    const user_id = req.authData.user_id;
+    const { location, page = 1, pageSize = 10 } = req.body;
+
+    const filteredData = {
+      status: true,
+      deleted_by_user: false,
+      location,
+    };
+
+    const socials = await getSocial(
+      filteredData,
+      { page, pageSize },
+      [],
+      [["createdAt", "DESC"]],
+    );
+
+    if (!socials?.Records?.length) {
+      return generalResponse(
+        res,
+        {
+          Records: [],
+          Pagination: {},
+        },
+        "No Socials Found",
+        true,
+        true,
+      );
+    }
+
+    return generalResponse(res, socials, "Socials Found", true, false);
+  } catch (error) {
+    console.log(error);
+    return generalResponse(res, {}, "Something went wrong", false, true);
+  }
+}
+
+async function pin_unpin(req, res) {
+  try {
+    const user_id = req.authData.user_id;
+
+    if (!req.body.social_id) {
+      return generalResponse(
+        res,
+        {},
+        "social_id is required",
+        false,
+        true,
+        400,
+      );
+    }
+
+    const data = {
+      social_id: req.body.social_id,
+      pin_by: user_id,
+    };
+
+    const unPin = await deletePin(data);
+
+    if (unPin > 0) {
+      return generalResponse(
+        res,
+        {},
+        "Social Unpinned Successfully",
+        true,
+        true,
+      );
+    }
+
+    await createPin(data);
+
+    return generalResponse(res, {}, "Social Pinned Successfully", true, true);
+  } catch (error) {
+    console.log(error);
+
+    return generalResponse(res, {}, "Something went wrong", false, true);
+  }
+}
+
 module.exports = {
   uploadSocial,
   showSocials,
@@ -1363,4 +1446,6 @@ module.exports = {
   showSocialswithoutauth,
   getSocialsOfFollowers,
   searchSocials,
+  searchSocialsByLocation,
+  pin_unpin,
 };

@@ -66,6 +66,18 @@ async function getFeed(
       }
     }
 
+    if (filterPayload.location !== undefined) {
+      const locationText = filterPayload.location?.trim();
+
+      delete whereCondition.location;
+
+      if (locationText) {
+        whereCondition.location = {
+          [Sequelize.Op.iLike]: `%${locationText}%`,
+        };
+      }
+    }
+
     /* ---------------- FOLLOWING FILTER ---------------- */
 
     if (filterPayload.user_id && Array.isArray(filterPayload.user_id)) {

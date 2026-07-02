@@ -148,6 +148,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       onDelete: "CASCADE",
     });
+    Social.hasMany(models.SocialPin, {
+      foreignKey: "social_id",
+      as: "pins",
+      onDelete: "CASCADE",
+    });
   };
   return Social;
 };

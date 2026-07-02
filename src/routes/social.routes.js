@@ -20,5 +20,7 @@ router.post('/delete-social', social_controller.deleteSocials);
 router.post('/add-views', social_controller.addViews);
 router.post('/edit-social', social_controller.editSocial);
 router.post('/search-social', social_controller.searchSocials);
+router.post('/search-social-by-location', social_controller.searchSocialsByLocation);
+router.post('/pin-unpin', social_controller.pin_unpin);
 
 module.exports = router;

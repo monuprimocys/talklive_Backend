@@ -25,6 +25,7 @@ const paidCommunicationRoutes = require("./paid-communication.routes")
 const paymentRoutes = require("./payment.routes")
 const notificationSettingRoutes = require("./notificationSetting.routes")
 const storyRoutes = require("./story.routes")
+const levelRoutes = require("./level.routes")
 
 const router = Router();
 
@@ -44,6 +45,7 @@ router.use("/music" , musicRoutes)
 router.use("/gift" , giftRoutes)
 router.use("/transaction", transactionRoutes)
 router.use("/live", liveRoutes )
+router.use('/level', levelRoutes);
 
 
 router.use("/hashtag", hashtag_routes )

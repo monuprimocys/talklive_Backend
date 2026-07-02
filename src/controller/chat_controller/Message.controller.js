@@ -368,7 +368,14 @@ async function chat_list(socket, data, emitEvent) {
         }
 
         // Reject ho chuki hai
-        if (chat.request_status === "rejected") {
+        // if (chat.request_status === "rejected") {
+        //   continue;
+        // }
+
+        if (
+          chat.request_status === "rejected" &&
+          chat.request_receiver_id === isUser.user_id
+        ) {
           continue;
         }
 

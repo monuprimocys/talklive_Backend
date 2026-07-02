@@ -40,6 +40,12 @@ const {
   extractHashtags,
   saveHashtags,
 } = require("../../service/repository/hashtag.service");
+const {
+  createNotification,
+} = require("../../service/repository/notification.service");
+const {
+  sendPushNotification,
+} = require("../../service/common/onesignal.service");
 const { Op, Sequelize } = require("sequelize");
 
 function parseBoolean(value) {
@@ -495,12 +501,12 @@ async function getFeedPosts(req, res) {
       );
 
       // 👇 Yaha add karo
-      console.log("USER ID =>", user_id);
-      console.log("FOLLOWINGS COUNT =>", followings.Records.length);
-      console.log(
-        "FOLLOWINGS DATA =>",
-        JSON.stringify(followings.Records, null, 2),
-      );
+      // console.log("USER ID =>", user_id);
+      // console.log("FOLLOWINGS COUNT =>", followings.Records.length);
+      // console.log(
+      //   "FOLLOWINGS DATA =>",
+      //   JSON.stringify(followings.Records, null, 2),
+      // );
 
       const followingIds = followings?.Records?.map((f) => f.user_id) || [];
 
@@ -950,6 +956,47 @@ async function likeFeedPost(req, res) {
       );
     }
 
+    const feed = await getFeedById(feed_id);
+
+    if (feed && feed.user_id !== user_id) {
+      await createNotification({
+        notification_title: "Feed Liked",
+        notification_type: "Feed Like",
+        sender_id: user_id,
+        reciever_id: feed.user_id,
+        feed_id: feed.feed_id,
+        notification_description: {
+          user_pic: req.userData.profile_pic,
+          user_name: req.userData.user_name,
+          full_name: req.userData.full_name,
+          description: " has liked your feed ",
+          user_id,
+          feed_id: feed.feed_id,
+        },
+      });
+
+      const notification_user = await getUser({
+        user_id: feed.user_id,
+      });
+
+      if (notification_user?.device_token) {
+        sendPushNotification({
+          playerIds: [notification_user.device_token],
+          title: "Feed Liked",
+          message: `${req.userData.full_name} has liked your feed`,
+          // big_picture: feed.feed_media || "",
+          big_picture:
+            feed.media?.[0]?.thumbnail_url || feed.media?.[0]?.media_url || "",
+          large_icon: req.userData.profile_pic,
+          data: {
+            feed_id: feed.feed_id,
+            user_id,
+            type: "Feed Like",
+          },
+        });
+      }
+    }
+
     return generalResponse(
       res,
       { feed_like_id: like.feed_like_id },
@@ -1117,6 +1164,44 @@ async function addCommentToFeed(req, res) {
     };
 
     const comment = await addFeedComment(commentPayload);
+
+    if (feed.user_id !== user_id) {
+      const notification_user = await getUser({
+        user_id: feed.user_id,
+      });
+
+      if (notification_user?.device_token) {
+        await sendPushNotification({
+          playerIds: [notification_user.device_token],
+          title: `${req.userData.full_name} commented on your feed`,
+          message: comment_text,
+          large_icon: req.userData.profile_pic,
+          big_picture:
+            feed.media?.[0]?.thumbnail_url || feed.media?.[0]?.media_url || "",
+          data: {
+            type: "Feed Comment",
+            feed_id: feed.feed_id,
+            feed_comment_id: comment.feed_comment_id,
+            user_id,
+          },
+        });
+      }
+
+      await createNotification({
+        notification_title: "Commented",
+        notification_type: "Feed Comment",
+        sender_id: user_id,
+        reciever_id: feed.user_id,
+        feed_id: feed.feed_id,
+        notification_description: {
+          description: " has commented on your feed ",
+          comment_data: comment_text,
+          feed_id: feed.feed_id,
+          feed_comment_id: comment.feed_comment_id,
+          user_id,
+        },
+      });
+    }
 
     return generalResponse(
       res,
@@ -1441,6 +1526,58 @@ async function addReplyToComment(req, res) {
 
     const comment = await addFeedComment(commentPayload);
 
+    // Get feed details
+    const feed = await getFeedById(feed_id);
+
+    // Get parent comment details
+    const parentComment = await FeedComment.findOne({
+      where: {
+        feed_comment_id: parent_comment_id,
+      },
+    });
+
+    if (parentComment && parentComment.user_id !== user_id) {
+      const notification_user = await getUser({
+        user_id: parentComment.user_id,
+      });
+
+      if (notification_user?.device_token) {
+        await sendPushNotification({
+          playerIds: [notification_user.device_token],
+          title: `${req.userData.full_name} replied to your comment`,
+          message: comment_text,
+          large_icon: req.userData.profile_pic,
+          big_picture:
+            feed?.media?.[0]?.thumbnail_url ||
+            feed?.media?.[0]?.media_url ||
+            "",
+          data: {
+            type: "Feed Reply",
+            feed_id: feed.feed_id,
+            feed_comment_id: comment.feed_comment_id,
+            parent_comment_id,
+            user_id,
+          },
+        });
+      }
+
+      await createNotification({
+        notification_title: "Replied",
+        notification_type: "Feed Reply",
+        sender_id: user_id,
+        reciever_id: parentComment.user_id,
+        feed_id: feed.feed_id,
+        notification_description: {
+          description: " has replied to your comment ",
+          comment_data: comment_text,
+          feed_id: feed.feed_id,
+          feed_comment_id: comment.feed_comment_id,
+          parent_comment_id,
+          user_id,
+        },
+      });
+    }
+
     return generalResponse(
       res,
       { feed_comment_id: comment.feed_comment_id },
@@ -1554,6 +1691,49 @@ async function likeComment(req, res) {
         true,
         409,
       );
+    }
+
+    // Get feed details
+    const feed = await getFeedById(comment.feed_id);
+
+    // Don't notify if user likes own comment
+    if (comment.user_id !== user_id) {
+      const notification_user = await getUser({
+        user_id: comment.user_id,
+      });
+
+      if (notification_user?.device_token) {
+        await sendPushNotification({
+          playerIds: [notification_user.device_token],
+          title: "Comment Liked",
+          message: `${req.userData.full_name} has liked your comment`,
+          large_icon: req.userData.profile_pic,
+          big_picture:
+            feed?.media?.[0]?.thumbnail_url ||
+            feed?.media?.[0]?.media_url ||
+            "",
+          data: {
+            type: "Feed Comment Like",
+            feed_id: comment.feed_id,
+            feed_comment_id: comment.feed_comment_id,
+            user_id,
+          },
+        });
+      }
+
+      await createNotification({
+        notification_title: "Comment Liked",
+        notification_type: "Feed Comment Like",
+        sender_id: user_id,
+        reciever_id: comment.user_id,
+        feed_id: comment.feed_id,
+        notification_description: {
+          description: " has liked your comment ",
+          feed_id: comment.feed_id,
+          feed_comment_id: comment.feed_comment_id,
+          user_id,
+        },
+      });
     }
 
     return generalResponse(
@@ -1815,6 +1995,46 @@ async function searchFeeds(req, res) {
   }
 }
 
+async function searchFeedsByLocation(req, res) {
+  try {
+    const { location, page = 1, pageSize = 10 } = req.body;
+
+    const filterPayload = {
+      status: true,
+      deleted_by_user: false,
+      location,
+    };
+
+    const feeds = await getFeed(
+      filterPayload,
+      {
+        page: Number(page),
+        pageSize: Number(pageSize),
+      },
+      [],
+      [["createdAt", "DESC"]],
+    );
+
+    if (!feeds?.Records?.length) {
+      return generalResponse(
+        res,
+        {
+          Records: [],
+          Pagination: {},
+        },
+        "No Feeds Found",
+        true,
+        true,
+      );
+    }
+
+    return generalResponse(res, feeds, "Feeds Found", true, false);
+  } catch (error) {
+    console.error(error);
+    return generalResponse(res, {}, "Something went wrong", false, true);
+  }
+}
+
 module.exports = {
   createFeedPost,
   getFeedPosts,
@@ -1842,4 +2062,5 @@ module.exports = {
   updateFeedStatus,
   getFeedPostsAdmin,
   searchFeeds,
+  searchFeedsByLocation,
 };
