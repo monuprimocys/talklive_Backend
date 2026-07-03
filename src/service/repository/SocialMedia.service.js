@@ -447,9 +447,15 @@ async function deletePin(data) {
 }
 
 async function getPin(data) {
-  return await SocialPin.findOne({
+  console.log("Searching Pins =>", data);
+
+  const pins = await SocialPin.findAll({
     where: data,
   });
+
+  console.log("Found Pins =>", pins);
+
+  return pins;
 }
 
 module.exports = {

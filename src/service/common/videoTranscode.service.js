@@ -15,13 +15,19 @@ const client = new S3Client({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
-  forcePathStyle: true
+  forcePathStyle: true,
 });
 
+// const QUALITIES = [
+//   { label: "360p", size: "640x360" },
+//   { label: "480p", size: "854x480" },
+//   { label: "720p", size: "1280x720" },
+// ];
+
 const QUALITIES = [
-  { label: "360p", size: "640x360" },
-  { label: "480p", size: "854x480" },
-  { label: "720p", size: "1280x720" },
+  { label: "360p", width: 640 },
+  { label: "480p", width: 854 },
+  { label: "720p", width: 1280 },
 ];
 
 // Download file from URL to local temp path
@@ -30,31 +36,33 @@ const downloadFromUrl = (url, destPath) => {
     const protocol = url.startsWith("https") ? https : http;
     const file = fs.createWriteStream(destPath);
 
-    protocol.get(url, (response) => {
-      if (response.statusCode === 301 || response.statusCode === 302) {
-        // Handle redirect
-        downloadFromUrl(response.headers.location, destPath)
-          .then(resolve)
-          .catch(reject);
-        return;
-      }
+    protocol
+      .get(url, (response) => {
+        if (response.statusCode === 301 || response.statusCode === 302) {
+          // Handle redirect
+          downloadFromUrl(response.headers.location, destPath)
+            .then(resolve)
+            .catch(reject);
+          return;
+        }
 
-      response.pipe(file);
-      file.on("finish", () => {
-        file.close();
-        resolve(destPath);
+        response.pipe(file);
+        file.on("finish", () => {
+          file.close();
+          resolve(destPath);
+        });
+      })
+      .on("error", (err) => {
+        fs.unlink(destPath, () => {});
+        reject(err);
       });
-    }).on("error", (err) => {
-      fs.unlink(destPath, () => { });
-      reject(err);
-    });
   });
 };
 
 // Upload local file to S3
 const uploadLocalFileToS3 = async (localPath, folderPath, fileName) => {
   const fileContent = fs.readFileSync(localPath);
-  const key = `${folderPath}/${fileName}`.replace(/\/+/g, '/');
+  const key = `${folderPath}/${fileName}`.replace(/\/+/g, "/");
 
   const params = {
     Bucket: process.env.AWS_BUCKET,
@@ -90,13 +98,16 @@ const generateQualities = (inputPath) => {
           .on("error", reject)
           .run();
       });
-    })
+    }),
   );
 };
 
 // Generate qualities for S3 storage - downloads from S3 URL, transcodes, uploads back to S3
 // Naming: video_{originalTimestamp}_{newTimestamp}_{quality}.mp4
-const generateQualitiesS3 = async (s3VideoUrl, folderPath = "reelboost/reels") => {
+const generateQualitiesS3 = async (
+  s3VideoUrl,
+  folderPath = "reelboost/reels",
+) => {
   const tempDir = "./uploads/temp";
 
   // Ensure temp directory exists
@@ -107,7 +118,9 @@ const generateQualitiesS3 = async (s3VideoUrl, folderPath = "reelboost/reels") =
   // Extract original timestamp from URL (e.g., video_1769081603587.mp4 -> 1769081603587)
   const originalFileName = path.basename(s3VideoUrl).split("?")[0];
   const originalTimestampMatch = originalFileName.match(/video_(\d+)/);
-  const originalTimestamp = originalTimestampMatch ? originalTimestampMatch[1] : Date.now();
+  const originalTimestamp = originalTimestampMatch
+    ? originalTimestampMatch[1]
+    : Date.now();
 
   const tempInputPath = `${tempDir}/${originalFileName}`;
 
@@ -128,8 +141,12 @@ const generateQualitiesS3 = async (s3VideoUrl, folderPath = "reelboost/reels") =
       const tempOutputPath = `${tempDir}/${outputFileName}`;
 
       return new Promise((resolve, reject) => {
+        // ffmpeg(tempInputPath)
+        //   .size(q.size)
+        //   .output(tempOutputPath)
+        //   .on("end", async () => {
         ffmpeg(tempInputPath)
-          .size(q.size)
+          .videoFilters(`scale=${q.width}:-2`)
           .output(tempOutputPath)
           .on("end", async () => {
             try {
@@ -137,7 +154,7 @@ const generateQualitiesS3 = async (s3VideoUrl, folderPath = "reelboost/reels") =
               const s3Url = await uploadLocalFileToS3(
                 tempOutputPath,
                 folderPath,
-                outputFileName
+                outputFileName,
               );
               resolve({ quality: q.label, path: s3Url });
             } catch (err) {
@@ -147,7 +164,7 @@ const generateQualitiesS3 = async (s3VideoUrl, folderPath = "reelboost/reels") =
           .on("error", reject)
           .run();
       });
-    })
+    }),
   );
 
   // Clean up original temp file

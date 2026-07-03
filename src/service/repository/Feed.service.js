@@ -9,6 +9,7 @@ const {
   FeedReport,
   User,
   FeedCommentLike,
+  FeedPin,
 } = require("../../../models");
 
 /**
@@ -238,6 +239,14 @@ async function getFeed(
       distinct: true,
       subQuery: false,
     });
+    
+    const pinnedFeeds = user_id
+      ? await FeedPin.findAll({
+          where: { pin_by: user_id },
+        })
+      : [];
+
+    const pinnedIds = new Set(pinnedFeeds.map((item) => item.feed_id));
 
     // Fetch mentioned users details
     const mentionedUserIds = [
@@ -262,14 +271,32 @@ async function getFeed(
       }, {});
     }
 
+    // const updatedRows = rows.map((feed) => {
+    //   const data = feed.toJSON();
+
+    //   data.mentioned_users = (data.mentioned_users || [])
+    //     .map((id) => userMap[id])
+    //     .filter(Boolean);
+
+    //   return data;
+    // });
+
     const updatedRows = rows.map((feed) => {
       const data = feed.toJSON();
+
+      data.isPinned = pinnedIds.has(data.feed_id);
 
       data.mentioned_users = (data.mentioned_users || [])
         .map((id) => userMap[id])
         .filter(Boolean);
 
       return data;
+    });
+
+    updatedRows.sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return 0;
     });
 
     const totalPages = Math.ceil(count / limit);
@@ -1381,6 +1408,22 @@ async function getFeedByIdnew(feedId, user_id) {
   }
 }
 
+async function createPin(data) {
+  return await FeedPin.create(data);
+}
+
+async function deletePin(data) {
+  return await FeedPin.destroy({
+    where: data,
+  });
+}
+
+async function getPin(data) {
+  return await FeedPin.findAll({
+    where: data,
+  });
+}
+
 module.exports = {
   createFeed,
   getFeed,
@@ -1408,4 +1451,7 @@ module.exports = {
   getFeedByIdAdmin,
   getFeedById,
   getFeedByIdnew,
+  createPin,
+  deletePin,
+  getPin,
 };

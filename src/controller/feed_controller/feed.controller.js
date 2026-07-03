@@ -25,6 +25,9 @@ const {
   getFeedPostsAdminservice,
   getFeedByIdAdmin,
   getFeedByIdnew,
+  createPin,
+  deletePin,
+  getPin,
 } = require("../../service/repository/Feed.service");
 const { getUser } = require("../../service/repository/user.service");
 const {
@@ -2035,6 +2038,35 @@ async function searchFeedsByLocation(req, res) {
   }
 }
 
+async function feed_pin_unpin(req, res) {
+  try {
+    const user_id = req.authData.user_id;
+
+    if (!req.body.feed_id) {
+      return generalResponse(res, {}, "feed_id is required", false, true, 400);
+    }
+
+    const data = {
+      feed_id: req.body.feed_id,
+      pin_by: user_id,
+    };
+
+    const unPin = await deletePin(data);
+
+    if (unPin > 0) {
+      return generalResponse(res, {}, "Feed Unpinned Successfully", true, true);
+    }
+
+    await createPin(data);
+
+    return generalResponse(res, {}, "Feed Pinned Successfully", true, true);
+  } catch (error) {
+    console.log(error);
+
+    return generalResponse(res, {}, "Something went wrong", false, true);
+  }
+}
+
 module.exports = {
   createFeedPost,
   getFeedPosts,
@@ -2063,4 +2095,5 @@ module.exports = {
   getFeedPostsAdmin,
   searchFeeds,
   searchFeedsByLocation,
+  feed_pin_unpin,
 };

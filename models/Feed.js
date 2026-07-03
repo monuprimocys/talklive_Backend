@@ -161,6 +161,11 @@ module.exports = (sequelize, DataTypes) => {
       as: "notifications",
       onDelete: "CASCADE",
     });
+    
+    Feed.hasMany(models.FeedPin, {
+      foreignKey: "feed_id",
+      onDelete: "CASCADE",
+    });
   };
 
   return Feed;
