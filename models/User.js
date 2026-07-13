@@ -263,7 +263,11 @@ module.exports = (sequelize, DataTypes) => {
         return platforms?.length > 0 ? platforms : [];
       },
     },
-
+    voip_token: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: "",
+    },
 
     // Paid Communication Pricing
     message_price: {

@@ -20,6 +20,7 @@ const avatar_routes = require("./Avatar.routes")
 const language_routes = require("./Language.routes");
 const { get_Config } = require("../controller/Admin_controller/ProjectConf.controller");
 const callRoutes = require("./call.routes");
+// const voipRoutes = require("./voip.routes");
 const feedRoutes = require("./feed.routes")
 const paidCommunicationRoutes = require("./paid-communication.routes")
 const paymentRoutes = require("./payment.routes")
@@ -65,6 +66,7 @@ router.get("/project_conf", get_Config)
 
 
 router.use("/call", callRoutes);
+// router.use("/voip", voipRoutes);
 router.use("/paid-communication", paidCommunicationRoutes);
 router.use("/payment", paymentRoutes);
 router.use("/notification-settings", notificationSettingRoutes);

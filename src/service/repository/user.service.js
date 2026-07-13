@@ -75,7 +75,7 @@ const getUsers = async (
   }
 };
 
-async function getUser(userPayload = {}, auth = false, deleted = false) {
+async function getUser(userPayload = {}, auth = false, deleted = false, attributes = null) {
   try {
     const orConditions = [];
 
@@ -122,6 +122,7 @@ async function getUser(userPayload = {}, auth = false, deleted = false) {
           mobile_num: userPayload.mobile_num,
           country_code: userPayload.country_code,
         },
+        attributes: attributes,
       });
     }
 
@@ -129,6 +130,7 @@ async function getUser(userPayload = {}, auth = false, deleted = false) {
     if (deleted) {
       return await User.findOne({
         where: userPayload,
+        attributes: attributes,
       });
     }
 
@@ -137,6 +139,7 @@ async function getUser(userPayload = {}, auth = false, deleted = false) {
       where: {
         [Op.or]: orConditions,
       },
+      attributes: attributes,
     });
   } catch (error) {
     console.error("Error in getUser:", error);

@@ -5,6 +5,7 @@ const { getUser } = require("../../service/repository/user.service");
 const participant_service = require("../../service/repository/Participant.service");
 const { generateRoomId } = require("../../service/repository/call.service");
 const { sendPushNotification } = require("../../service/common/onesignal.service");
+const { sendVoipNotification } = require("../../service/voipService");
 const { User, Chat, Message } = require("../../../models");
 const { getChat, createChat } = require("../../service/repository/Chat.service");
 const {
@@ -91,7 +92,7 @@ async function makeCall(req, res) {
         [
           {
             model: User,
-            attributes: ["user_id", "device_token", "socket_id", "full_name"],
+            attributes: ["user_id", "device_token", "socket_id", "full_name", "voip_token", "platforms"],
           },
         ]
       );
@@ -282,6 +283,46 @@ async function makeCall(req, res) {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // STEP 6.5: VOIP notifications for iOS users
+    // ─────────────────────────────────────────────────────────────
+    for (const receiver of receivers) {
+      // Use the User data already fetched in participants query
+      const receiverUser = receiver.User;
+      
+      if (receiverUser && receiverUser.voip_token && receiverUser.platforms?.includes("ios")) {
+        try {
+          await sendVoipNotification({
+            deviceToken: receiverUser.voip_token,
+            callerId: String(user_id),
+            callerName: callerName,
+            callData: {
+              call_id: call.call_id,
+              room_id: call.room_id,
+              call_type: call.call_type,
+              chat_id: call.chat_id,
+              current_users: call.current_users,
+            },
+            userData: {
+              user_id: glob_user.user_id,
+              user_name: glob_user.user_name,
+              full_name: glob_user.full_name,
+              profile_pic: glob_user.profile_pic,
+            },
+            chatData: {
+              chat_id: chat.chat_id,
+              chat_name: chat.chat_name || chat.group_name || callerName,
+              group_name: chat.group_name || null,
+              chat_type: chat.chat_type,
+            },
+          });
+          console.log(`✅ VOIP notification sent to user ${receiver.user_id}`);
+        } catch (voipError) {
+          console.error(`❌ Failed to send VOIP to user ${receiver.user_id}:`, voipError.message);
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // STEP 7: HTTP response
     // ─────────────────────────────────────────────────────────────
     res.status(200).json({
@@ -290,7 +331,7 @@ async function makeCall(req, res) {
     });
 
     // ─────────────────────────────────────────────────────────────
-    // STEP 8: Socket events
+    // STEP 9: Socket events
     // ─────────────────────────────────────────────────────────────
     const messageCopy = JSON.parse(JSON.stringify(NewMessageAfterCreation));
 

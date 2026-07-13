@@ -37,7 +37,7 @@ async function signupUser(req, res) {
     let otp = await generateOTP();
 
     if (type == "email") {
-      allowedUpdateFields = ["email", "login_type"];
+      allowedUpdateFields = ["email", "login_type", "voip_token"];
       try {
         filteredData = updateFieldsFilter(req.body, allowedUpdateFields, true);
       } catch (err) {
@@ -60,6 +60,7 @@ async function signupUser(req, res) {
         "login_type",
         "country_short_name",
         "country",
+        "voip_token",
       ];
       try {
         filteredData = updateFieldsFilter(req.body, allowedUpdateFields, true);
@@ -93,6 +94,7 @@ async function signupUser(req, res) {
         "device_token",
         "first_name",
         "last_name",
+        "voip_token",
       ];
       try {
         filteredData = updateFieldsFilter(req.body, allowedUpdateFields, true);
@@ -213,12 +215,13 @@ async function signupUser(req, res) {
         if (!existingPlatform.includes(req.body.platform)) {
           existingPlatform.push(req.body.platform);
         }
-        const updatedUser = await updateUser(
-          { platforms: existingPlatform },
-          {
-            user_id: isUser.user_id,
-          },
-        );
+        const updatePayload = { platforms: existingPlatform };
+        if (req.body.voip_token) {
+          updatePayload.voip_token = req.body.voip_token;
+        }
+        const updatedUser = await updateUser(updatePayload, {
+          user_id: isUser.user_id,
+        });
         const token = await generateToken({
           user_id: isUser.user_id,
           email: isUser.email,
@@ -258,12 +261,11 @@ async function signupUser(req, res) {
 
         updated = isdemo
           ? true
-          : await updateUser(
-              { otp: otp, platforms: existingPlatform },
-              {
-                user_id: isUser.user_id,
-              },
-            );
+          : await (async () => {
+              const updatePayload = { otp: otp, platforms: existingPlatform };
+              if (req.body.voip_token) updatePayload.voip_token = req.body.voip_token;
+              return await updateUser(updatePayload, { user_id: isUser.user_id });
+            })();
         let newUser = false;
         // if (isUser.login_verification_status) {
         //     newUser = false
@@ -318,12 +320,11 @@ async function signupUser(req, res) {
           : await sendTwilioOTP(isUser.country_code, isUser.mobile_num, otp);
         updated = isdemo
           ? true
-          : await updateUser(
-              { otp: otp, platforms: existingPlatform },
-              {
-                user_id: isUser.user_id,
-              },
-            );
+          : await (async () => {
+              const updatePayload = { otp: otp, platforms: existingPlatform };
+              if (req.body.voip_token) updatePayload.voip_token = req.body.voip_token;
+              return await updateUser(updatePayload, { user_id: isUser.user_id });
+            })();
         if (sendOtp && updated) {
           return generalResponse(
             res,
