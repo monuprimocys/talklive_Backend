@@ -168,11 +168,16 @@ async function uploadSocial(req, res) {
       "music_id",
       "latitude",
       "longitude",
+      "mentioned_users",
     ];
     let filteredData;
     try {
       filteredData = updateFieldsFilter(req.body, allowedFields);
       filteredData.user_id = user_id;
+
+      filteredData.mentioned_users = parseIntegerArray(
+        filteredData.mentioned_users,
+      );
 
       // Handle music_id - set to null if empty, 0, or invalid
       if (

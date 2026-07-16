@@ -84,6 +84,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DECIMAL(11, 8),
       allowNull: true,
     },
+    mentioned_users: {
+      type: DataTypes.ARRAY(DataTypes.INTEGER),
+      allowNull: true,
+      defaultValue: [],
+    },
   });
   Social.associate = function (models) {
     Social.belongsTo(models.User, {

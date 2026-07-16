@@ -30,6 +30,16 @@ async function sendMessage(req, res) {
   try {
     const user_id = req.authData.user_id;
     const glob_user = await getUser({ user_id: user_id });
+
+    if (glob_user.is_deleted) {
+      return generalResponse(
+        res,
+        {},
+        "Your account has been deleted.",
+        false,
+        true,
+      );
+    }
     if (!req.body.chat_type) {
       req.body.chat_type = "Private";
     }
