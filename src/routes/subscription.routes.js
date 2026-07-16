@@ -7,6 +7,7 @@ const router = Router();
 
 // GET /api/subscription/plans — returns all active plans merged with live RevenueCat data
 router.get("/plans", authMiddleware, getPlans);
-router.post("/restore",  authMiddleware , restorePurchases)
+router.post("/restore", authMiddleware, restorePurchases);
+
 
 module.exports = router;

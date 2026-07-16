@@ -23,9 +23,6 @@ class RevenueCatWebhookService {
     }
 
     const received = authorizationHeader.replace(/^Bearer\s+/i, "");
-
-    console.log("Received:", received);
-console.log("Expected Secret:", process.env.REVENUECAT_WEBHOOK_SECRET);
     if (received === secret) return true;
 
     const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
@@ -92,8 +89,6 @@ console.log("Expected Secret:", process.env.REVENUECAT_WEBHOOK_SECRET);
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   static async resolveUser(rcCustomerId, t) {
-
-    console.log("Searching user for:", rcCustomerId);
     const numericUserId = Number(rcCustomerId);
     const whereOptions = [{ revenuecat_customer_id: rcCustomerId }];
 
@@ -110,8 +105,6 @@ console.log("Expected Secret:", process.env.REVENUECAT_WEBHOOK_SECRET);
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
-
-      console.log("Resolved User:", user ? user.toJSON() : null);
 
     if (user && !user.revenuecat_customer_id) {
       await user.update({ revenuecat_customer_id: rcCustomerId }, { transaction: t });
@@ -278,12 +271,7 @@ console.log("Expected Secret:", process.env.REVENUECAT_WEBHOOK_SECRET);
 
   static async handleCancellation(event, t) {
     const user = await this.resolveUser(event.app_user_id, t);
-    // if (!user) return;
-
-    if (!user) {
-  console.warn(`[RC Webhook] INITIAL_PURCHASE: no user for RC id ${event.app_user_id}`);
-  return;
-}
+    if (!user) return;
 
     const originalTxId = event.original_transaction_id || event.transaction_id;
     const subscription = await db.Subscription.findOne({

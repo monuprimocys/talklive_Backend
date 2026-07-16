@@ -4,7 +4,7 @@ const path = require("path");
 const config = require("../../config/voipConfig");
 
 function generateVoipToken() {
-  const keyPath = path.join(__dirname, "../../certs/AuthKey_ZHDC4U38K5.p8");
+  const keyPath = path.join(__dirname, "../../certs/AuthKey_X7FGCTU477.p8");
   const privateKey = fs.readFileSync(keyPath);
 
   return jwt.sign({}, privateKey, {

@@ -263,7 +263,11 @@ module.exports = (sequelize, DataTypes) => {
         return platforms?.length > 0 ? platforms : [];
       },
     },
-
+    voip_token: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: "",
+    },
 
     // Paid Communication Pricing
     message_price: {
@@ -290,7 +294,7 @@ module.exports = (sequelize, DataTypes) => {
         min: 0,
       }
     },
-     revenuecat_customer_id: {
+    revenuecat_customer_id: {
       type: DataTypes.STRING,
       allowNull: true,
     },
@@ -302,13 +306,7 @@ module.exports = (sequelize, DataTypes) => {
     subscription_expires_at: {
       type: DataTypes.DATE,
       allowNull: true,
-    },
-     voip_token: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      defaultValue: "",
-    },
-
+    }
   }
   );
   User.associate = function (models) {
@@ -454,14 +452,6 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: "user_id",
       onDelete: "CASCADE",
     });
-    User.hasMany(models.SocialPin, {
-      foreignKey: "pin_by",
-      as: "pinned_socials",
-    });
-    User.hasMany(models.MusicSave, {
-    foreignKey: "save_by",
-    onDelete: "CASCADE",
-});
 
     // Dynamic_Admins
     // User.hasMany(models.Transaction_conf, {

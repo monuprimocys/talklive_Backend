@@ -11,16 +11,6 @@ class RevenueCatWebhookController {
       return res.status(500).json({ success: false, message: "Server configuration error" });
     }
 
-    console.log("Authorization Header:", req.headers.authorization);
-console.log(
-  "Webhook Secret Exists:",
-  !!process.env.REVENUECAT_WEBHOOK_SECRET
-);
-console.log(
-  "Secret Length:",
-  process.env.REVENUECAT_WEBHOOK_SECRET?.length
-);
-
     const authHeader = req.headers["authorization"];
     const isValid = RevenueCatWebhookService.verifySignature(rawBody, authHeader);
 
@@ -40,10 +30,6 @@ console.log(
     const payload = req.body;
 
     console.log("RC Webhook payload", payload);
-
-    console.log("APP USER ID:", payload.event.app_user_id);
-console.log("EVENT TYPE:", payload.event.type);
-console.log("PRODUCT ID:", payload.event.product_id);
 
     if (!payload?.event?.id || !payload?.event?.type) {
       console.warn("[RC Webhook] Malformed payload — missing event.id or event.type");

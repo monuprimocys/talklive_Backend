@@ -77,35 +77,11 @@ async function addVerificationStatusToUsers(userRecords) {
   }
 }
 
-/**
- * Add is_verified field to a single user record
- * @param {Object} userRecord - Single user object
- * @returns {Promise<Object>} - User object with is_verified field
- */
-async function addVerificationStatusToUser(userRecord) {
-  if (!userRecord) {
-    return userRecord;
-  }
 
-  try {
-    const isVerified = await isUserVerified(userRecord.user_id);
-    return {
-      ...userRecord,
-      is_verified: isVerified
-    };
-  } catch (error) {
-    console.error("Error adding verification status to user:", error);
-    return {
-      ...userRecord,
-      is_verified: false
-    };
-  }
-}
 
 module.exports = {
   isUserVerified,
   addVerificationStatusToUsers,
-  addVerificationStatusToUser
 };
 
  
