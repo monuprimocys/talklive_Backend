@@ -493,16 +493,38 @@ async function getBattleTransactionHistory(user_id, live_host_id, pagination) {
         raw: true,
     });
 
-    if (participants.length < 2) throw new Error("Battle participants missing");
+    // if (participants.length < 2) throw new Error("Battle participants missing");
 
-    const winner = participants.find(p => p.is_winner);
-    const loser  = participants.find(p => !p.is_winner);
+    // const winner = participants.find(p => p.is_winner);
+    // const loser  = participants.find(p => !p.is_winner);
 
-    if (!winner || !loser) throw new Error("Winner or loser not decided yet");
+    // if (!winner || !loser) throw new Error("Winner or loser not decided yet");
 
-    const role = currentHost.is_winner ? "winner" : "loser";
+    // const role = currentHost.is_winner ? "winner" : "loser";
 
-    console.log("role", role);
+    // console.log("role", role);
+
+//     let winner = null;
+// let loser = null;
+// let role = "draw";
+
+// if (participants.length >= 2) {
+//     winner = participants.find(p => p.is_winner === true) || null;
+//     loser = participants.find(p => p.is_winner === false) || null;
+
+//     if (winner && loser) {
+//         role = currentHost.is_winner ? "winner" : "loser";
+//     }
+// }
+
+let winner = participants.find(p => p.is_winner === true) || null;
+let loser = participants.find(p => p.is_winner === false) || null;
+
+let role = "draw";
+
+if (winner && loser) {
+    role = currentHost.is_winner ? "winner" : "loser";
+}
 
     // 3️⃣ Fetch paginated battle transactions **for the current user** (received gifts)
     // Both winner and loser receive gifts, so we always use reciever_id = current user
@@ -533,8 +555,8 @@ async function getBattleTransactionHistory(user_id, live_host_id, pagination) {
         live_host_id,
         live_id: currentHost.live_id,
         role,
-        winner_id: winner.user_id,
-        loser_id: loser.user_id,
+           winner_id: winner?.user_id || null,
+        loser_id: loser?.user_id || null,
         Records: rows,
         Pagination: {
             total_pages: Math.ceil(count / limit),

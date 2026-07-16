@@ -4,10 +4,15 @@ const participant_service = require("../../service/repository/Participant.servic
 const message_service = require("../../service/repository/Message.service");
 const message_seen_service = require("../../service/repository/Message_seen.service");
 const chat_service = require("../../service/repository/Chat.service");
+const { getGift } = require("../../service/repository/Gift.service");
+const {
+  createCoinToCoinTransaction,
+  getCoinToCoinTransaction,
+} = require("../../service/repository/Transactions/Coin_coin_transaction.service");
 
 const social_service = require("../../service/repository/SocialMedia.service");
 const updateFieldsFilter = require("../../helper/updateField.helper");
-const { getUser } = require("../../service/repository/user.service");
+const { updateUser, getUser } = require("../../service/repository/user.service");
 const { generalResponse } = require("../../helper/response.helper");
 const {
   User,
@@ -19,11 +24,14 @@ const {
   Feed,
   FeedMedia,
   Block,
+  Gift
 } = require("../../../models");
 const filterData = require("../../helper/filter.helper");
 const {
   sendPushNotification,
 } = require("../../service/common/onesignal.service");
+const BalanceValidator = require("../../service/payment/balance-validator.service");
+const CoinsService = require("../../service/payment/coins.service");
 const { Op } = require("sequelize");
 
 async function sendMessage(req, res) {
@@ -32,14 +40,14 @@ async function sendMessage(req, res) {
     const glob_user = await getUser({ user_id: user_id });
 
     if (glob_user.is_deleted) {
-      return generalResponse(
+    return generalResponse(
         res,
         {},
         "Your account has been deleted.",
         false,
-        true,
-      );
-    }
+        true
+    );
+}
     if (!req.body.chat_type) {
       req.body.chat_type = "Private";
     }
@@ -56,6 +64,8 @@ async function sendMessage(req, res) {
       "story_type_content",
       "message_content",
       "feed_id",
+      "gift_id",
+      "quantity",
     ];
     allowedMandataryFields = ["message_type"];
     let filteredData;
@@ -70,7 +80,7 @@ async function sendMessage(req, res) {
       );
       filteredDataPayload = { ...filteredData, ...filteredDataMadatary };
       if (
-        ["text", "image", "video", "gif", "doc"].includes(
+        ["text"].includes(
           filteredDataPayload.message_type,
         ) &&
         !req.body.message_content
@@ -189,6 +199,82 @@ async function sendMessage(req, res) {
           feed?.media?.[0]?.media_location || "";
       }
 
+      if (filteredDataPayload.message_type === "gift") {
+
+  if (!filteredDataPayload.gift_id) {
+    return generalResponse(
+      res,
+      { success: false },
+      "gift_id is required",
+      false,
+      true,
+    );
+  }
+
+  if (!filteredDataPayload.quantity || filteredDataPayload.quantity <= 0) {
+    return generalResponse(
+      res,
+      { success: false },
+      "quantity should be greater than 0",
+      false,
+      true,
+    );
+  }
+
+
+  const gift = await getGift({
+    gift_id: filteredDataPayload.gift_id,
+  });
+
+
+  if (!gift || gift.Records.length === 0) {
+    return generalResponse(
+      res,
+      { success: false },
+      "Gift not found",
+      false,
+      true,
+    );
+  }
+
+
+  const sender = await getUser({
+    user_id: user_id,
+  });
+
+
+  const giftValue = Number(gift.Records[0].gift_value);
+
+  const totalCoin =
+    giftValue * Number(filteredDataPayload.quantity);
+
+
+  const senderCoin =
+    Number(sender.toJSON().available_coins);
+
+
+  if (senderCoin < totalCoin) {
+    return generalResponse(
+      res,
+      { success: false },
+      "Insufficient Coin",
+      false,
+      true,
+    );
+  }
+
+
+  filteredDataPayload.coin = totalCoin;
+  filteredDataPayload.gift_value = giftValue;
+
+  filteredDataPayload.message_content =
+    gift.Records[0].name;
+
+
+  filteredDataPayload.message_thumbnail =
+    gift.Records[0].gift_thumbnail;
+}
+
       if (filteredDataPayload.message_type === "image") {
         if (process.env.MEDIAFLOW == "S3") {
           if (!req.body.file_media_1) {
@@ -256,6 +342,23 @@ async function sendMessage(req, res) {
           filteredDataPayload.message_content = req.files[0].path;
         }
       }
+
+      if (filteredDataPayload.message_type === "audio") {
+        if (process.env.MEDIAFLOW == "S3") {
+          if (!req.body.file_media_1) {
+            return generalResponse(
+              res,
+              { success: false },
+              "file_media_1 is required",
+              false,
+              true,
+            );
+          }
+          filteredDataPayload.message_content = req.body.file_media_1;
+        } else {
+          filteredDataPayload.message_content = req.files[0].path;
+        }
+      }
     } catch (err) {
       console.log(err);
       return generalResponse(
@@ -268,16 +371,42 @@ async function sendMessage(req, res) {
     }
     if (filteredDataPayload.user_id && !filteredDataPayload.chat_id) {
       filteredDataPayload.user_id = Number(filteredDataPayload.user_id);
-      if ((await getUser({ user_id: filteredDataPayload.user_id })) == null) {
-        return generalResponse(
-          res,
-          { success: false },
-          "User not found",
-          false,
-          true,
-          404,
-        );
-      }
+      // if ((await getUser({ user_id: filteredDataPayload.user_id })) == null) {
+      //   return generalResponse(
+      //     res,
+      //     { success: false },
+      //     "User not found",
+      //     false,
+      //     true,
+      //     404,
+      //   );
+      // }
+
+      const receiver = await getUser({
+    user_id: filteredDataPayload.user_id,
+  });
+
+  if (!receiver) {
+    return generalResponse(
+      res,
+      { success: false },
+      "User not found",
+      false,
+      true,
+      404,
+    );
+  }
+
+  // 👇 Ye naya check add karna hai
+  if (receiver.is_deleted) {
+    return generalResponse(
+      res,
+      {},
+      "This user account is no longer available.",
+      false,
+      true
+    );
+  }
 
       const isBlocked = await Block.findOne({
         where: {
@@ -381,6 +510,62 @@ async function sendMessage(req, res) {
         }
       }
     }
+
+  const paidMessageTypes = [
+  "text",
+  "image",
+  "video",
+  "gif",
+  "doc",
+  "audio",
+  "social",
+  "story",
+  "feed",
+  "location",
+];
+
+if (paidMessageTypes.includes(filteredDataPayload.message_type)) {
+
+    const pricing = await BalanceValidator.validateRecipientPricing(
+        filteredDataPayload.user_id,
+        "MESSAGE"
+    );
+
+    if (pricing.isPricingEnabled) {
+
+        const balance = await BalanceValidator.validateBalance(
+            user_id,
+            pricing.price
+        );
+
+        if (!balance.hasBalance) {
+            return generalResponse(
+                res,
+                {},
+                balance.message,
+                false,
+                true
+            );
+        }
+
+        const deduct = await CoinsService.deductCoins(
+            user_id,
+            filteredDataPayload.user_id,
+            pricing.price,
+            "MESSAGE"
+        );
+
+        if (!deduct.success) {
+            return generalResponse(
+                res,
+                {},
+                deduct.message,
+                false,
+                true
+            );
+        }
+    }
+}
     const includeOptionsforChat = [
       {
         model: Message,
@@ -408,6 +593,10 @@ async function sendMessage(req, res) {
           "socket_id",
         ],
       },
+        {
+    model: Gift,
+    required: false,
+  },
       {
         model: Social,
         required: false,
@@ -471,10 +660,75 @@ async function sendMessage(req, res) {
         model: "Feed",
         alias_name: "Feed",
       },
+       {
+    foreign_key: "gift_id",
+    model: "Gift",
+    alias_name: "Gift",
+  },
     ];
 
+    if(filteredDataPayload.message_type === "gift"){
+
+  const sender = await getUser({
+    user_id:user_id
+  });
+
+
+  const updatedSender = await updateUser(
+    {
+      available_coins:
+      Number(sender.dataValues.available_coins) -
+      Number(filteredDataPayload.coin)
+    },
+    {
+      user_id:user_id
+    }
+  );
+
+
+if (updatedSender[0] === 0) {
+  return generalResponse(
+    res,
+    {},
+    "Coin deduction failed",
+    false,
+    true
+  );
+}
+
+  const receiver = await getUser({
+      user_id: filteredDataPayload.user_id
+  });
+
+  await updateUser(
+      {
+          available_coins:
+              Number(receiver.dataValues.available_coins) +
+              Number(filteredDataPayload.coin)
+      },
+      {
+          user_id: filteredDataPayload.user_id
+      }
+  );
+
+
+  filteredDataPayload.transaction_ref = "gift";
+
+  filteredDataPayload.success = "success";
+
+}
+
     filteredDataPayload.sender_id = user_id;
-    const newMessage = await message_service.createMessage(filteredDataPayload);
+    filteredDataPayload.reciever_id = filteredDataPayload.user_id;
+
+    
+
+
+const newMessage = await message_service.createMessage(filteredDataPayload);
+
+if(filteredDataPayload.message_type === "gift"){
+   await createCoinToCoinTransaction(filteredDataPayload);
+}
     const messageSeenBySender = await message_seen_service.createMessageSeen({
       message_seen_status: "seen",
       message_id: newMessage.message_id,
@@ -614,6 +868,11 @@ async function sendMessage(req, res) {
           });
           NewMessageAfterCreation.Records[0].unseen_count = unseenCount.count;
 
+          const unreadConversation =
+await message_seen_service.getUnreadConversationCount(
+    is_user.user_id
+);
+
           if (req.body.message_type == "text") {
             sendPushNotification({
               playerIds: [is_user.device_token],
@@ -699,12 +958,49 @@ async function sendMessage(req, res) {
               },
             });
           }
+            if (req.body.message_type == "audio") {
+            sendPushNotification({
+              playerIds: [is_user.device_token],
+              title: `${req.userData.full_name} has Sent you an Audio`,
+              message: "Audio",
+              large_icon: req.userData.profile_pic,
+              // big_picture: NewMessageAfterCreation.Records[0].message_content,
+              data: {
+                type: "message",
+                user_id: req.authData.user_id,
+                full_name: req.userData.full_name,
+                profile_pic: req.userData.profile_pic,
+                chat_id: filteredDataPayload.chat_id,
+                message_id: NewMessageAfterCreation.Records[0].messa_id,
+              },
+            });
+          }
 
           socket_service.emitEvent(
             is_user?.socket_id,
             "recieve",
             NewMessageAfterCreation,
           );
+
+          socket_service.emitEvent(
+    is_user.socket_id,
+    "unread_conversation_count",
+    unreadConversation
+);
+          if (req.body.message_type === "gift") {
+    socket_service.emitEvent(
+        is_user.socket_id,
+        "gift_recived",
+        {
+            type: "gift_recv",
+            sender_id: user_id,
+            gift_id: filteredDataPayload.gift_id,
+            quantity: filteredDataPayload.quantity,
+            coin: filteredDataPayload.coin,
+            message_id: NewMessageAfterCreation.Records[0].message_id,
+        }
+    );
+}
           if (req.body.message_type == "social") {
             const notification_social = await social_service.getSocial({
               social_id: filteredData.social_id,
@@ -766,6 +1062,34 @@ async function sendMessage(req, res) {
               },
             });
           }
+          if(req.body.message_type === "gift"){
+
+ sendPushNotification({
+    playerIds:[is_user.device_token],
+
+    title:`${req.userData.full_name} sent you a gift`,
+
+    message:
+    `${filteredDataPayload.quantity} x Gift`,
+
+    large_icon:req.userData.profile_pic,
+
+    big_picture:
+    NewMessageAfterCreation?.Records?.[0]
+    ?.message_thumbnail,
+
+    data:{
+      type:"gift",
+      gift_id:filteredDataPayload.gift_id,
+      quantity:filteredDataPayload.quantity,
+      coin:filteredDataPayload.coin,
+      chat_id:filteredDataPayload.chat_id,
+      user_id:req.authData.user_id
+    }
+
+ });
+
+}
         }
       }
       // Reciver Logic
@@ -847,5 +1171,6 @@ async function updateRequestStatus(req, res) {
     return generalResponse(res, {}, "Something went wrong", false, true);
   }
 }
+
 
 module.exports = { sendMessage, updateRequestStatus };

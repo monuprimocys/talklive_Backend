@@ -97,13 +97,34 @@ async function getMessageSeenCount({ andConditions = {}, orConditions = {} }) {
     }
 }
 
+async function getUnreadConversationCount(user_id) {
+  try {
+    const count = await Message_seen.count({
+      where: {
+        user_id,
+        message_seen_status: {
+          [Op.ne]: "seen",
+        },
+      },
+      distinct: true,
+      col: "chat_id",
+    });
+
+    return { count };
+  } catch (error) {
+    console.log(error);
+    throw error;
+  }
+}
+
 
 
 module.exports = {
     createMessageSeen,
     getMessageSeen,
     getMessageSeenCount,
-    updateMessageSeen
+    updateMessageSeen,
+    getUnreadConversationCount,
 };
 
 

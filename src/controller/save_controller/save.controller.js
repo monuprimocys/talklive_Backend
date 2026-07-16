@@ -7,6 +7,8 @@ const updateFieldsFilter = require("../../helper/updateField.helper");
 const filterData = require("../../helper/filter.helper");
 const { isFollow } = require("../../service/repository/Follow.service");
 const { getComment } = require("../../service/repository/Comment.service");
+const music_save_service=require("../../service/repository/MusicSave.service");
+const { Op, Sequelize } = require("sequelize");
 
 async function save_unsave(req, res) {
     try {
@@ -176,7 +178,7 @@ async function save_list(req, res) {
 
             const saves = await save_service.getSave(filteredData, includeOptions, attributes,{page , pageSize});
 
-            if (saves?.Records?.length <= 0) {
+             if (saves?.Records?.length <= 0) {
                 return generalResponse(
                     res,
                     { Records: [] },
@@ -186,6 +188,26 @@ async function save_list(req, res) {
                     200
                 ); 
             }
+
+            let savedMusicIds = new Set();
+
+if (user_id) {
+    const musicSaves = await music_save_service.getMusicSave(
+        { save_by: user_id },
+        [],
+        ["music_id"],
+        {
+            page: 1,
+            pageSize: 100000,
+        }
+    );
+
+    savedMusicIds = new Set(
+        (musicSaves?.Records || []).map(item => item.music_id)
+    );
+}
+
+           
 
             const keysToRemove = [
                 "password",
@@ -213,29 +235,175 @@ async function save_list(req, res) {
 
                 return rawData; // Return the filtered data
             })
-            if (req?.body?.include == 'Social') {
-                likeData = await Promise.all(saves.Records.map(async (record) => {
-                    const likes = await like_sevice.getLike({ like_by: user_id, social_id: record.social_id });
-                    record.isLiked = likes.Records.length > 0;
+            // if (req?.body?.include == 'Social') {
+            //     likeData = await Promise.all(saves.Records.map(async (record) => {
+            //         const likes = await like_sevice.getLike({ like_by: user_id, social_id: record.social_id });
+            //         record.isLiked = likes.Records.length > 0;
                     
-                    const saves = await save_service.getSave({ save_by: user_id, social_id: record.social_id });
-                    record.isSaved = saves.Records.length > 0;
+            //         const saves = await save_service.getSave({ save_by: user_id, social_id: record.social_id });
+            //         record.isSaved = saves.Records.length > 0;
                     
-                    const isFollowing = await isFollow({ follower_id: user_id, user_id: record.Social.user_id });
-                    record.isFollowing = isFollowing ? true : false;
+            //         const isFollowing = await isFollow({ follower_id: user_id, user_id: record.Social.user_id });
+            //         record.isFollowing = isFollowing ? true : false;
                     
-                    const comments  =  await getComment({social_id: record.social_id} )
-                    record.total_comments = comments.Pagination.total_records
+            //         const comments  =  await getComment({social_id: record.social_id} )
+            //         record.total_comments = comments.Pagination.total_records
                     
-                    const totalLikes = await like_sevice.getLike({ social_id: record.social_id });
-                    record.total_likes = totalLikes.Pagination.total_records
+            //         const totalLikes = await like_sevice.getLike({ social_id: record.social_id });
+            //         record.total_likes = totalLikes.Pagination.total_records
                     
-                    const total_saves = await save_service.getSave({ social_id: record.social_id });
-                    record.total_saves = total_saves.Pagination.total_records
+            //         const total_saves = await save_service.getSave({ social_id: record.social_id });
+            //         record.total_saves = total_saves.Pagination.total_records
                     
-                    return record;
-                }));
+            //         return record;
+            //     }));
+            // }
+
+         if (req?.body?.include == 'Social') {
+
+    // Fetch mentioned users
+    const mentionedUserIds = [
+        ...new Set(
+            saves.Records.flatMap((record) => {
+                let users = record.Social?.mentioned_users || [];
+
+                if (typeof users === "string") {
+                    users = JSON.parse(users);
+                }
+
+                return Array.isArray(users) ? users : [];
+            })
+        ),
+    ];
+
+    let userMap = {};
+
+    if (mentionedUserIds.length) {
+        const mentionedUsers = await User.findAll({
+            where: {
+                user_id: {
+                    [Sequelize.Op.in]: mentionedUserIds,
+                },
+            },
+            attributes: [
+                "user_id",
+                "user_name",
+                "full_name",
+                "profile_pic"
+            ],
+        });
+
+        userMap = mentionedUsers.reduce((acc, user) => {
+            acc[user.user_id] = user.toJSON();
+            return acc;
+        }, {});
+    }
+
+
+    likeData = await Promise.all(saves.Records.map(async (record) => {
+
+        // const recordJson = record.toJSON();
+
+        const recordJson = JSON.parse(JSON.stringify(record));
+
+//         console.log(record);
+// console.log(typeof record.toJSON);
+
+        // Convert mentioned users
+        if (recordJson.Social) {
+
+            let mentionedUsers = recordJson.Social.mentioned_users || [];
+
+            if (typeof mentionedUsers === "string") {
+                mentionedUsers = JSON.parse(mentionedUsers);
             }
+
+            recordJson.Social.mentioned_users = Array.isArray(mentionedUsers)
+                ? mentionedUsers
+                    .map(id => userMap[id])
+                    .filter(Boolean)
+                : [];
+        }
+
+
+        // Like by current user
+        const likes = await like_sevice.getLike({
+            like_by: user_id,
+            social_id: record.social_id
+        });
+
+        recordJson.isLiked = likes.Records.length > 0;
+
+
+        // Save by current user
+        const saved = await save_service.getSave({
+            save_by: user_id,
+            social_id: record.social_id
+        });
+
+        recordJson.isSaved = saved.Records.length > 0;
+
+       
+
+    if (recordJson.Social?.Music) {
+        recordJson.Social.Music.isSaved = savedMusicIds.has(
+            recordJson.Social.Music.music_id
+        );
+    }
+
+    // console.log(recordJson.Social);
+// console.log(recordJson.Social?.Music);
+
+
+
+
+        // Following status
+        // const isFollowing = await isFollow({
+        //     follower_id: user_id,
+        //     user_id: record.Social.user_id
+        // });
+
+        // record.isFollowing = isFollowing ? true : false;
+
+        const isFollowing = recordJson.Social
+    ? await isFollow({
+          follower_id: user_id,
+          user_id: recordJson.Social.user_id,
+      })
+    : false;
+
+recordJson.isFollowing = !!isFollowing;
+
+
+        // Total comments
+        const comments = await getComment({
+            social_id: record.social_id
+        });
+
+        recordJson.total_comments = comments.Pagination.total_records;
+
+
+        // Total likes
+        const totalLikes = await like_sevice.getLike({
+            social_id: recordJson.social_id
+        });
+
+        recordJson.total_likes = totalLikes.Pagination.total_records;
+
+
+        // Total saves
+        const totalSaves = await save_service.getSave({
+            social_id: recordJson.social_id
+        });
+
+        recordJson.total_saves = totalSaves.Pagination.total_records;
+
+        return recordJson;
+
+
+        // return record;
+    }));
+}
             return generalResponse(
                 res,
                 {
@@ -258,15 +426,14 @@ async function save_list(req, res) {
         }
 
     } catch (error) {
-        console.error("Error in finding social", error);
-        return generalResponse(
-            res,
-            { success: false },
-            "Something went wrong while finding social!",
-            false,
-            true
-        );
-    }
+    console.error(error);
+    console.error(error.stack);
+
+    return res.status(500).json({
+        error: error.message,
+        stack: error.stack,
+    });
+}
 }
 async function save_list_admin(req, res) {
     try {

@@ -25,7 +25,10 @@ const paidCommunicationRoutes = require("./paid-communication.routes")
 const paymentRoutes = require("./payment.routes")
 const notificationSettingRoutes = require("./notificationSetting.routes")
 const storyRoutes = require("./story.routes")
+const subscriptionRoutes = require("./subscription.routes")
 const levelRoutes = require("./level.routes")
+const musicsaveRoutes = require("./musicsave.routes") 
+const musiccategoryRoutes = require("./musiccategory.routes") 
 
 const router = Router();
 
@@ -45,7 +48,10 @@ router.use("/music" , musicRoutes)
 router.use("/gift" , giftRoutes)
 router.use("/transaction", transactionRoutes)
 router.use("/live", liveRoutes )
+
 router.use('/level', levelRoutes);
+router.use("/musicsave" , musicsaveRoutes)
+router.use("/musiccategory" , musiccategoryRoutes)
 
 
 router.use("/hashtag", hashtag_routes )
@@ -69,5 +75,7 @@ router.use("/call", callRoutes);
 router.use("/paid-communication", paidCommunicationRoutes);
 router.use("/payment", paymentRoutes);
 router.use("/notification-settings", notificationSettingRoutes);
+router.use("/subscription", subscriptionRoutes);
+
 
 module.exports = router;

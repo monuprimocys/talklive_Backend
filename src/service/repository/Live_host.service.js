@@ -197,13 +197,24 @@ async function getLiveLive_host(
       ];
     }
 
+    // const { rows, count } = await Live_host.findAndCountAll({
+    //   where: wherecondition,
+    //   limit,
+    //   offset,
+    //   include,
+    //   order: [["createdAt", "DESC"]],
+    // });
+
     const { rows, count } = await Live_host.findAndCountAll({
-      where: wherecondition,
-      limit,
-      offset,
-      include,
-      order: [["createdAt", "DESC"]],
-    });
+    where: wherecondition,
+    include,
+    distinct: true,
+    col: "live_host_id",
+    subQuery: false,
+    limit,
+    offset,
+    order: [["createdAt", "DESC"]],
+});
 
     return {
       Records: rows,

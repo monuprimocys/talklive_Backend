@@ -11,6 +11,7 @@ const {
   FeedCommentLike,
   FeedPin,
 } = require("../../../models");
+const { addVerificationStatusToUsers } = require("../../helper/subscription.helper");
 
 /**
  * Create a new feed post
@@ -67,7 +68,7 @@ async function getFeed(
       }
     }
 
-    if (filterPayload.location !== undefined) {
+      if (filterPayload.location !== undefined) {
       const locationText = filterPayload.location?.trim();
 
       delete whereCondition.location;
@@ -239,10 +240,12 @@ async function getFeed(
       distinct: true,
       subQuery: false,
     });
-    
-    const pinnedFeeds = user_id
+
+    const pinUserId = filterPayload.user_id || user_id;
+
+    const pinnedFeeds = pinUserId
       ? await FeedPin.findAll({
-          where: { pin_by: user_id },
+          where: { pin_by: pinUserId },
         })
       : [];
 
@@ -271,34 +274,56 @@ async function getFeed(
       }, {});
     }
 
-    // const updatedRows = rows.map((feed) => {
-    //   const data = feed.toJSON();
+  // Step 1: Convert rows to JSON
+// let feedsData = rows.map((feed) => {
+//   const data = feed.toJSON();
 
-    //   data.mentioned_users = (data.mentioned_users || [])
-    //     .map((id) => userMap[id])
-    //     .filter(Boolean);
+//   data.mentioned_users = (data.mentioned_users || [])
+//     .map((id) => userMap[id])
+//     .filter(Boolean);
 
-    //   return data;
-    // });
+//   return data;
+// });
 
-    const updatedRows = rows.map((feed) => {
-      const data = feed.toJSON();
+let feedsData = rows.map((feed) => {
+  const data = feed.toJSON();
 
-      data.isPinned = pinnedIds.has(data.feed_id);
+  // isPinned parameter
+  data.isPinned = pinnedIds.has(data.feed_id);
 
-      data.mentioned_users = (data.mentioned_users || [])
-        .map((id) => userMap[id])
-        .filter(Boolean);
+  data.mentioned_users = (data.mentioned_users || [])
+    .map((id) => userMap[id])
+    .filter(Boolean);
 
-      return data;
-    });
+  return data;
+});
 
-    updatedRows.sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return 0;
-    });
+// Step 2: Collect all users from feed
+let usersList = feedsData.map(f => f.User).filter(Boolean);
 
+// Step 3: Add is_verified to users
+const updatedUsers = await addVerificationStatusToUsers(usersList);
+
+// Step 4: Create map for quick replacement
+const userMapVerified = new Map();
+updatedUsers.forEach(u => {
+  userMapVerified.set(u.user_id, u);
+});
+
+// Step 5: Attach updated user back to feed
+feedsData = feedsData.map(feed => ({
+  ...feed,
+  User: userMapVerified.get(feed.User?.user_id) || feed.User
+}));
+
+// FINAL
+const updatedRows = feedsData;
+
+updatedRows.sort((a, b) => {
+  if (a.isPinned && !b.isPinned) return -1;
+  if (!a.isPinned && b.isPinned) return 1;
+  return 0;
+});
     const totalPages = Math.ceil(count / limit);
 
     return {

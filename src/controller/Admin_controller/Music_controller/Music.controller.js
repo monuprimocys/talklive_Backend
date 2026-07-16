@@ -3,13 +3,15 @@ const updateFieldsFilter = require("../../../helper/updateField.helper");
 const { createMusic, getMusic, deleteMusic, updateMusic } = require("../../../service/repository/Music.service");
 const { getUser } = require("../../../service/repository/user.service");
 const { uploadFileToS3 } = require("../../../service/common/s3.service");
+const music_save_service = require("../../../service/repository/MusicSave.service");
+
 
 async function uploadMusic(req, res) {
     try {
 
         let allowedUpdateFieldsMandatory = [];
 
-        allowedUpdateFieldsMandatory = ['music_title', 'music_desc', 'owner']
+        allowedUpdateFieldsMandatory = ['music_title']
         let filteredData;
         try {
             filteredData = updateFieldsFilter(req.body, allowedUpdateFieldsMandatory, true);
@@ -31,6 +33,7 @@ async function uploadMusic(req, res) {
                     filteredData.music_url = req.files[1].path;
                 } else {
                     return generalResponse(res, { success: false }, "Files are required", false, true);
+                    
                 }
             }
         }
@@ -85,6 +88,7 @@ async function uploadMusic(req, res) {
 
 async function showMusic(req, res) {
     try {
+        const user_id = req.authData?.user_id;
         const { page = 1, pageSize = 10 } = req.body
 
         allowedUpdateFields = ['music_id']
@@ -110,6 +114,7 @@ async function showMusic(req, res) {
             filteredData.admin_status = true
         }
 
+        filteredData.is_original = false;
         const music = await getMusic(filteredData, pagination = { page, pageSize });
 
         // Filter out blocked users
@@ -126,6 +131,42 @@ async function showMusic(req, res) {
                 // 400
             );
         }
+
+//         const savedMusic = await music_save_service.getMusicSave(
+//     { save_by: user_id },
+//     [],
+//     ["music_id"],
+//     {
+//         page: 1,
+//         pageSize: 100000
+//     }
+// );
+
+// const savedIds = new Set(savedMusic.Records.map(x => x.music_id));
+
+let savedIds = new Set();
+
+if (user_id) {
+    const savedMusic = await music_save_service.getMusicSave(
+        { save_by: user_id },
+        [],
+        ["music_id"],
+        {
+            page: 1,
+            pageSize: 100000
+        }
+    );
+
+    savedIds = new Set(savedMusic.Records.map(x => x.music_id));
+}
+
+const musicRecords = music.Records.map(item => {
+    const data = item.toJSON();
+    data.is_saved = savedIds.has(item.music_id);
+    return data;
+});
+
+        
 
 
         // Now, you can safely iterate over the records and add the `isLiked` property
@@ -157,7 +198,8 @@ async function showMusic(req, res) {
         return generalResponse(
             res,
             {
-                Records: music.Records,
+                // Records: music.Records,
+                Records: musicRecords,
                 Pagination: music.Pagination
             },
             "Music Found",
@@ -177,6 +219,8 @@ async function showMusic(req, res) {
         );
     }
 }
+
+
 
 async function delete_Music(req, res) {
     try {
@@ -350,6 +394,7 @@ async function update_Music(req, res) {
 module.exports = {
     uploadMusic,
     showMusic,
+    // searchMusic,
     // delete_Music,
     update_Music
 };  

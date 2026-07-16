@@ -10,6 +10,7 @@ const router = express.Router();
 // Auth Social Routes
 router.use(authMiddleware)
 router.post('/get-music', music_controller.showMusic);
+// router.post('/search-music', music_controller.searchMusic);
 
 
 

@@ -19,21 +19,22 @@ async function getLevels(req, res) {
       order: [["level_number", "ASC"]],
     });
 
-    const response = levels.map((level) => ({
-      level_id: level.level_id,
-      level_name: level.level_name,
-      level_number: level.level_number,
-      required_coins: level.required_coins,
-      badge: level.badge,
-      is_current:
-        user.available_coins >= level.required_coins &&
-        !levels.find(
-          (l) =>
-            l.level_number === level.level_number + 1 &&
-            user.available_coins >= l.required_coins,
-        ),
-      is_unlocked: user.available_coins >= level.required_coins,
-    }));
+    const response = levels.map((level, index) => {
+  const previousCoins =
+    index === 0 ? 0 : levels[index - 1].required_coins + 1;
+
+  return {
+    level_id: level.level_id,
+    level_name: level.level_name,
+    level_number: level.level_number,
+    required_coins: level.required_coins,
+    badge: level.badge,
+    is_current:
+      user.available_coins >= previousCoins &&
+      user.available_coins <= level.required_coins,
+    is_unlocked: user.available_coins >= level.required_coins,
+  };
+});
 
     return generalResponse(
       res,

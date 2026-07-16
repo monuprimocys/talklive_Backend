@@ -1,8 +1,11 @@
-const express = require('express');
-const { authMiddleware, optionalAuthMiddleware } = require('../middleware/authMiddleware');
-const { upload } = require('../middleware/upload');
-const { moderationMiddleware } = require('../middleware/moderationMiddleware');
-const feed_controller = require('../controller/feed_controller/feed.controller');
+const express = require("express");
+const {
+  authMiddleware,
+  optionalAuthMiddleware,
+} = require("../middleware/authMiddleware");
+const { upload } = require("../middleware/upload");
+const { moderationMiddleware } = require("../middleware/moderationMiddleware");
+const feed_controller = require("../controller/feed_controller/feed.controller");
 
 const router = express.Router();
 
@@ -20,7 +23,13 @@ const router = express.Router();
  * @files   For S3 mode: Send file_media_1 (image/video URL) in body
  *          For Local mode: Send files via multipart/form-data
  */
-router.post('/create', authMiddleware, upload.fields([{ name: 'files', maxCount: 10 }]), moderationMiddleware, feed_controller.createFeedPost);
+router.post(
+  "/create",
+  authMiddleware,
+  upload.fields([{ name: "files", maxCount: 10 }]),
+  moderationMiddleware,
+  feed_controller.createFeedPost,
+);
 
 /**
  * @route   POST /api/feed/get-presigned-url
@@ -31,7 +40,11 @@ router.post('/create', authMiddleware, upload.fields([{ name: 'files', maxCount:
  *   "mime_type": "image/jpeg|video/mp4|etc"
  * }
  */
-router.post('/get-presigned-url', authMiddleware, feed_controller.getPresignedUrl);
+router.post(
+  "/get-presigned-url",
+  authMiddleware,
+  feed_controller.getPresignedUrl,
+);
 
 /**
  * @route   POST /api/feed/upload-media-in-s3
@@ -39,7 +52,13 @@ router.post('/get-presigned-url', authMiddleware, feed_controller.getPresignedUr
  * @access  Private
  * @files   Single file: 'file'
  */
-router.post('/upload-media-in-s3', authMiddleware, upload.single('file'), moderationMiddleware, feed_controller.uploadMediaS3);
+router.post(
+  "/upload-media-in-s3",
+  authMiddleware,
+  upload.single("file"),
+  moderationMiddleware,
+  feed_controller.uploadMediaS3,
+);
 
 /**
  * @route   POST /api/feed/get-feed
@@ -57,16 +76,22 @@ router.post('/upload-media-in-s3', authMiddleware, upload.single('file'), modera
  *   "exclude_user_ids": [user_id1, user_id2]
  * }
  */
-router.post('/get-feed', authMiddleware, feed_controller.getFeedPosts);
+router.post("/get-feed", authMiddleware, feed_controller.getFeedPosts);
 
-router.post('/search-feed', authMiddleware, feed_controller.searchFeeds);
+router.post("/search-feed", authMiddleware, feed_controller.searchFeeds);
+
 router.post('/search-feed-by-location', authMiddleware, feed_controller.searchFeedsByLocation);
+
 /**
  * @route   GET /api/feed/get-feed/:feed_id
  * @desc    Get a single feed post with all details
  * @access  Private
  */
-router.get('/get-feed/:feed_id', authMiddleware, feed_controller.getFeedPostDetail);
+router.get(
+  "/get-feed/:feed_id",
+  authMiddleware,
+  feed_controller.getFeedPostDetail,
+);
 
 /**
  * @route   PUT /api/feed/edit-feed/:feed_id
@@ -78,14 +103,18 @@ router.get('/get-feed/:feed_id', authMiddleware, feed_controller.getFeedPostDeta
  *   "allow_comments": true|false
  * }
  */
-router.put('/edit-feed/:feed_id', authMiddleware, feed_controller.editFeedPost);
+router.put("/edit-feed/:feed_id", authMiddleware, feed_controller.editFeedPost);
 
 /**
  * @route   DELETE /api/feed/delete-feed/:feed_id
  * @desc    Delete a feed post (soft delete)
  * @access  Private
  */
-router.delete('/delete-feed/:feed_id', authMiddleware, feed_controller.deleteFeedPost);
+router.delete(
+  "/delete-feed/:feed_id",
+  authMiddleware,
+  feed_controller.deleteFeedPost,
+);
 
 /**
  * @route   POST /api/feed/add-media/:feed_id
@@ -93,7 +122,13 @@ router.delete('/delete-feed/:feed_id', authMiddleware, feed_controller.deleteFee
  * @access  Private
  * @files   Single file: 'file'
  */
-router.post('/add-media/:feed_id', authMiddleware, upload.single('file'), moderationMiddleware, feed_controller.uploadFeedMedia);
+router.post(
+  "/add-media/:feed_id",
+  authMiddleware,
+  upload.single("file"),
+  moderationMiddleware,
+  feed_controller.uploadFeedMedia,
+);
 
 /**
  * @route   POST /api/feed/like-feed
@@ -103,7 +138,7 @@ router.post('/add-media/:feed_id', authMiddleware, upload.single('file'), modera
  *   "feed_id": feed_id
  * }
  */
-router.post('/like-feed', authMiddleware, feed_controller.likeFeedPost);
+router.post("/like-feed", authMiddleware, feed_controller.likeFeedPost);
 
 /**
  * @route   POST /api/feed/unlike-feed
@@ -113,7 +148,7 @@ router.post('/like-feed', authMiddleware, feed_controller.likeFeedPost);
  *   "feed_id": feed_id
  * }
  */
-router.post('/unlike-feed', authMiddleware, feed_controller.unlikeFeedPost);
+router.post("/unlike-feed", authMiddleware, feed_controller.unlikeFeedPost);
 
 /**
  * @route   POST /api/feed/get-likes/:feed_id
@@ -124,7 +159,11 @@ router.post('/unlike-feed', authMiddleware, feed_controller.unlikeFeedPost);
  *   "pageSize": 20
  * }
  */
-router.post('/get-likes/:feed_id', authMiddleware, feed_controller.getFeedPostLikes);
+router.post(
+  "/get-likes/:feed_id",
+  authMiddleware,
+  feed_controller.getFeedPostLikes,
+);
 
 /**
  * @route   POST /api/feed/add-comment
@@ -136,7 +175,7 @@ router.post('/get-likes/:feed_id', authMiddleware, feed_controller.getFeedPostLi
  *   "mentioned_users": [user_id1, user_id2]
  * }
  */
-router.post('/add-comment', authMiddleware, feed_controller.addCommentToFeed);
+router.post("/add-comment", authMiddleware, feed_controller.addCommentToFeed);
 
 /**
  * @route   POST /api/feed/get-comments/:feed_id
@@ -147,20 +186,28 @@ router.post('/add-comment', authMiddleware, feed_controller.addCommentToFeed);
  *   "pageSize": 20
  * }
  */
-router.post('/get-comments/:feed_id', authMiddleware, feed_controller.getFeedPostComments);
+router.post(
+  "/get-comments/:feed_id",
+  authMiddleware,
+  feed_controller.getFeedPostComments,
+);
 
 /**
  * @route   DELETE /api/feed/delete-comment/:comment_id
  * @desc    Delete a comment
  * @access  Private
  */
-router.delete('/delete-comment/:comment_id', authMiddleware, feed_controller.deleteCommentFromFeed);
+router.delete(
+  "/delete-comment/:comment_id",
+  authMiddleware,
+  feed_controller.deleteCommentFromFeed,
+);
 
 /**
  * Reply to a comment
  * POST /api/feed/add-reply
  */
-router.post('/add-reply', authMiddleware, feed_controller.addReplyToComment);
+router.post("/add-reply", authMiddleware, feed_controller.addReplyToComment);
 
 /**
  * Get replies for a comment
@@ -168,13 +215,13 @@ router.post('/add-reply', authMiddleware, feed_controller.addReplyToComment);
  * @param  comment_id  - ID of the parent comment whose replies to fetch
  * @body   { page, pageSize } - Pagination params (optional)
  */
-router.post('/get-replies', authMiddleware, feed_controller.getCommentReplies);
+router.post("/get-replies", authMiddleware, feed_controller.getCommentReplies);
 
 /**
  * Like / Unlike comment (reply or top-level)
  */
-router.post('/like-comment', authMiddleware, feed_controller.likeComment);
-router.post('/unlike-comment', authMiddleware, feed_controller.unlikeComment);
+router.post("/like-comment", authMiddleware, feed_controller.likeComment);
+router.post("/unlike-comment", authMiddleware, feed_controller.unlikeComment);
 
 /**
  * @route   POST /api/feed/save-feed
@@ -184,7 +231,7 @@ router.post('/unlike-comment', authMiddleware, feed_controller.unlikeComment);
  *   "feed_id": feed_id
  * }
  */
-router.post('/save-feed', authMiddleware, feed_controller.saveFeedPost);
+router.post("/save-feed", authMiddleware, feed_controller.saveFeedPost);
 
 /**
  * @route   POST /api/feed/unsave-feed
@@ -194,7 +241,7 @@ router.post('/save-feed', authMiddleware, feed_controller.saveFeedPost);
  *   "feed_id": feed_id
  * }
  */
-router.post('/unsave-feed', authMiddleware, feed_controller.unsaveFeedPost);
+router.post("/unsave-feed", authMiddleware, feed_controller.unsaveFeedPost);
 
 /**
  * @route   POST /api/feed/get-saved-feeds
@@ -205,7 +252,11 @@ router.post('/unsave-feed', authMiddleware, feed_controller.unsaveFeedPost);
  *   "pageSize": 10
  * }
  */
-router.post('/get-saved-feeds', authMiddleware, feed_controller.getUserSavedFeedsController);
+router.post(
+  "/get-saved-feeds",
+  authMiddleware,
+  feed_controller.getUserSavedFeedsController,
+);
 
 /**
  * @route   POST /api/feed/report-feed
@@ -223,20 +274,21 @@ router.post('/get-saved-feeds', authMiddleware, feed_controller.getUserSavedFeed
  * @access  Private
  * @body    { "page": 1, "pageSize": 10 }
  */
-router.post('/get-my-feeds', authMiddleware, feed_controller.getMyFeeds);
+router.post("/get-my-feeds", authMiddleware, feed_controller.getMyFeeds);
 
 router.post('/feed-pin-unpin', authMiddleware, feed_controller.feed_pin_unpin);
 
-router.post('/report-feed', authMiddleware, feed_controller.reportFeedPost);
-router.post("/update-status", optionalAuthMiddleware, feed_controller.updateFeedStatus);
+router.post("/report-feed", authMiddleware, feed_controller.reportFeedPost);
+router.post(
+  "/update-status",
+  optionalAuthMiddleware,
+  feed_controller.updateFeedStatus,
+);
 
- router.post("/admin/feed", optionalAuthMiddleware, feed_controller.getFeedPostsAdmin);
- 
-
-
-
-
-
-
+router.post(
+  "/admin/feed",
+  optionalAuthMiddleware,
+  feed_controller.getFeedPostsAdmin,
+);
 
 module.exports = router;

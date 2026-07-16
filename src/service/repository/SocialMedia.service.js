@@ -1,14 +1,7 @@
 const { Op } = require("sequelize");
 const { Sequelize } = require("sequelize");
 
-const {
-  Social,
-  Media,
-  User,
-  Music,
-  Follow,
-  SocialPin,
-} = require("../../../models");
+const { Social, Media, User, Music, Follow, SocialPin, } = require("../../../models");
 
 async function createSocial(socialPayload) {
   try {
@@ -37,23 +30,13 @@ async function getSocial(
     // Build the where condition
     let wherecondition = { ...socialPayload }; // Default to the provided payload
 
-    // if (socialPayload.search) {
-    //   const searchText = socialPayload.search;
-
-    //   delete wherecondition.search;
-
-    //   wherecondition[Sequelize.Op.or] = [
-    //     {
-    //       social_type: {
-    //         [Sequelize.Op.iLike]: `%${searchText}%`,
-    //       },
+    // if (!socialPayload.user_id) {
+    //   wherecondition = {
+    //     ...wherecondition,
+    //     user_id: {
+    //       [Sequelize.Op.notIn]: excludedUserIds, // Exclude user_ids from the list
     //     },
-    //     {
-    //       social_desc: {
-    //         [Sequelize.Op.iLike]: `%${searchText}%`,
-    //       },
-    //     },
-    //   ];
+    //   };
     // }
 
     if (socialPayload.search !== undefined) {
@@ -68,7 +51,7 @@ async function getSocial(
       }
     }
 
-    if (socialPayload.location !== undefined) {
+     if (socialPayload.location !== undefined) {
       const locationText = socialPayload.location?.trim();
 
       delete wherecondition.location;
@@ -79,15 +62,6 @@ async function getSocial(
         };
       }
     }
-
-    // if (!socialPayload.user_id) {
-    //   wherecondition = {
-    //     ...wherecondition,
-    //     user_id: {
-    //       [Sequelize.Op.notIn]: excludedUserIds, // Exclude user_ids from the list
-    //     },
-    //   };
-    // }
 
     if (Array.isArray(socialPayload.user_id)) {
       wherecondition.user_id = {
@@ -278,9 +252,47 @@ async function getSocial(
     // Use findAndCountAll to get both rows and count
     const { rows, count } = await Social.findAndCountAll(query);
 
+    // Fetch mentioned users details
+const mentionedUserIds = [
+  ...new Set(rows.flatMap((social) => social.mentioned_users || [])),
+];
+
+let userMap = {};
+
+if (mentionedUserIds.length) {
+  const mentionedUsers = await User.findAll({
+    where: {
+      user_id: {
+        [Sequelize.Op.in]: mentionedUserIds,
+      },
+    },
+    attributes: ["user_id", "user_name", "full_name", "profile_pic"],
+  });
+
+  userMap = mentionedUsers.reduce((acc, user) => {
+    acc[user.user_id] = user.toJSON();
+    return acc;
+  }, {});
+}
+
+const updatedRows = rows.map((social) => {
+  const data = social.toJSON();
+
+  // data.mentioned_users = (data.mentioned_users || [])
+  //   .map((id) => userMap[id])
+  //   .filter(Boolean);
+    data.mentioned_users = Array.isArray(data.mentioned_users)
+    ? data.mentioned_users
+        .map((id) => userMap[id])
+        .filter(Boolean)
+    : [];
+
+  return data;
+});
+
     // Prepare the structured response
     return {
-      Records: rows,
+      Records: updatedRows,
       Pagination: {
         total_pages: Math.ceil(count / pageSize),
         total_records: Number(count),
@@ -293,6 +305,7 @@ async function getSocial(
     throw error;
   }
 }
+
 async function updateSocial(socialPayload, updateData, excludedUserIds = []) {
   try {
     // Ensure the provided socialPayload matches the conditions for updating

@@ -14,6 +14,11 @@ const { getChat } = require("../../service/repository/Chat.service");
  */
 async function declineCall(socket, data, emitEvent, emitToRoom) {
   try {
+
+
+
+    console.log("==========================debug=============================" , socket.authData , data)
+
     // 🔍 Ensure `call_id` is provided
     if (!data.call_id) {
       return emitEvent([socket.id], "call", {
@@ -71,8 +76,16 @@ async function declineCall(socket, data, emitEvent, emitToRoom) {
     // 👤 Get user info for notifying others
     const user = await getUser({ user_id: user_id });
 
+
+
+    console.log("====================chatchatchat=======================",chat.chat_type)
+
+
     // 📢 If it's a private chat → notify the other participant
-    if (chat.chat_type == "private") {
+    if (chat.chat_type == "Private") {
+
+      console.log("ggggggggggggggggggggggggggggggggggggggggggg")
+
       emitToRoom(call.room_id, "call_declined", {
         user,
         call,

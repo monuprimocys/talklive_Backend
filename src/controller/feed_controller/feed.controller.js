@@ -328,11 +328,13 @@ async function createFeedPost(req, res) {
           const mediaPayload = {
             feed_id: feed.feed_id,
             media_url: mediaUrl,
-            media_type: ["image_only", "text_image"].includes(
-              filteredData.feed_type,
-            )
-              ? "image"
-              : "video",
+              thumbnail_url:
+    ["video_only", "text_video"].includes(filteredData.feed_type)
+      ? req.body.video_thumbnail || null
+      : null,
+            media_type: ["image_only", "text_image"].includes(filteredData.feed_type)
+      ? "image"
+      : "video",
             order: i - 1,
           };
           mediaPromises.push(addFeedMedia(mediaPayload));
@@ -343,6 +345,10 @@ async function createFeedPost(req, res) {
             addFeedMedia({
               feed_id: feed.feed_id,
               media_url: req.body.file_media_1,
+                thumbnail_url:
+        ["video_only", "text_video"].includes(filteredData.feed_type)
+          ? req.body.video_thumbnail || null
+          : null,
               media_type: ["image_only", "text_image"].includes(
                 filteredData.feed_type,
               )
@@ -504,12 +510,12 @@ async function getFeedPosts(req, res) {
       );
 
       // 👇 Yaha add karo
-      // console.log("USER ID =>", user_id);
-      // console.log("FOLLOWINGS COUNT =>", followings.Records.length);
-      // console.log(
-      //   "FOLLOWINGS DATA =>",
-      //   JSON.stringify(followings.Records, null, 2),
-      // );
+      console.log("USER ID =>", user_id);
+      console.log("FOLLOWINGS COUNT =>", followings.Records.length);
+      console.log(
+        "FOLLOWINGS DATA =>",
+        JSON.stringify(followings.Records, null, 2),
+      );
 
       const followingIds = followings?.Records?.map((f) => f.user_id) || [];
 
@@ -1169,42 +1175,44 @@ async function addCommentToFeed(req, res) {
     const comment = await addFeedComment(commentPayload);
 
     if (feed.user_id !== user_id) {
-      const notification_user = await getUser({
-        user_id: feed.user_id,
-      });
+  const notification_user = await getUser({
+    user_id: feed.user_id,
+  });
 
-      if (notification_user?.device_token) {
-        await sendPushNotification({
-          playerIds: [notification_user.device_token],
-          title: `${req.userData.full_name} commented on your feed`,
-          message: comment_text,
-          large_icon: req.userData.profile_pic,
-          big_picture:
-            feed.media?.[0]?.thumbnail_url || feed.media?.[0]?.media_url || "",
-          data: {
-            type: "Feed Comment",
-            feed_id: feed.feed_id,
-            feed_comment_id: comment.feed_comment_id,
-            user_id,
-          },
-        });
-      }
-
-      await createNotification({
-        notification_title: "Commented",
-        notification_type: "Feed Comment",
-        sender_id: user_id,
-        reciever_id: feed.user_id,
+  if (notification_user?.device_token) {
+    await sendPushNotification({
+      playerIds: [notification_user.device_token],
+      title: `${req.userData.full_name} commented on your feed`,
+      message: comment_text,
+      large_icon: req.userData.profile_pic,
+      big_picture:
+        feed.media?.[0]?.thumbnail_url ||
+        feed.media?.[0]?.media_url ||
+        "",
+      data: {
+        type: "Feed Comment",
         feed_id: feed.feed_id,
-        notification_description: {
-          description: " has commented on your feed ",
-          comment_data: comment_text,
-          feed_id: feed.feed_id,
-          feed_comment_id: comment.feed_comment_id,
-          user_id,
-        },
-      });
-    }
+        feed_comment_id: comment.feed_comment_id,
+        user_id,
+      },
+    });
+  }
+
+  await createNotification({
+    notification_title: "Commented",
+    notification_type: "Feed Comment",
+    sender_id: user_id,
+    reciever_id: feed.user_id,
+    feed_id: feed.feed_id,
+    notification_description: {
+      description: " has commented on your feed ",
+      comment_data: comment_text,
+      feed_id: feed.feed_id,
+      feed_comment_id: comment.feed_comment_id,
+      user_id,
+    },
+  });
+}
 
     return generalResponse(
       res,
@@ -1483,6 +1491,7 @@ async function getMyFeeds(req, res) {
     );
   }
 }
+
 /**
  * Add a reply to a feed comment
  * POST /api/feed/add-reply
@@ -1764,7 +1773,6 @@ async function likeComment(req, res) {
     );
   }
 }
-
 /**
  * Unlike a feed comment OR a reply (sub-comment)
  * POST /api/feed/unlike-comment

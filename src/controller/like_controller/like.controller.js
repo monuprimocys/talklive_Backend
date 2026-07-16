@@ -119,6 +119,9 @@ async function like_unlike(req, res) {
                 if (req.body.social_id) {
                     const social = await getSocial({ social_id: req.body.social_id }, { page: 1, pageSize: 1 }, [], [])
                     notification_user = await getUser({ user_id: social.Records[0].user_id })
+
+                    console.log(notification_user);
+console.log(notification_user.device_token);
                     sendPushNotification(
                         {
                             playerIds: [notification_user.device_token],
@@ -129,7 +132,7 @@ async function like_unlike(req, res) {
                             data: {
                                 social_id: req.body.social_id,
                                 user_id: req.userData.user_id,
-                                social: social.Records[0],
+                                // social: social.Records[0],
                                 type: "Social Like",
                             }
                         }

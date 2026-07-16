@@ -25,10 +25,10 @@ let twilioClient = null
 async function sendEmailOTP(email, otp) {
   try {
     // ✅ Dev mode skip
-    if (process.env.NODE_ENV === "development") {
-      console.log("DEV MODE → OTP:", otp);
-      return true;
-    }
+    // if (process.env.NODE_ENV === "development") {
+    //   console.log("DEV MODE → OTP:", otp);
+    //   return true;
+    // }
 
     // ✅ Transporter (IMPORTANT FIX)
     const transporter = nodemailer.createTransport({
@@ -200,4 +200,53 @@ async function verifyOtp(userpayload, isDemo) {
 
 }
 
-module.exports = { sendEmailOTP, generateOTP, verifyOtp, sendTwilioOTP, sendMesg91TP }
+async function sendWelcomeEmail(email, name) {
+  try {
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.EMAIL_PORT) || 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL,
+        pass: process.env.PASSWORD,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+
+    await transporter.verify();
+
+    const templatePath = path.resolve(
+      __dirname,
+      "../../../public/welcomeEmailTemplate.html"
+    );
+
+    let emailTemplate = fs.readFileSync(templatePath, "utf-8");
+
+    const settings = await getConfig({ config_id: 1 });
+
+    let emailContent = emailTemplate
+      .replace(/{{app_name}}/g, settings.app_name)
+      .replace(/{{name}}/g, name)
+      .replace(/{{copy_right}}/g, settings.copyright_text);
+
+    const mailOptions = {
+      from: `"${settings.app_name}" <${process.env.EMAIL}>`,
+      to: email,
+      subject: `Welcome to ${settings.app_name} — Your stage starts now`,
+      html: emailContent,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+
+    console.log("✅ Welcome email sent:", info.messageId);
+
+    return true;
+  } catch (err) {
+    console.error("❌ Welcome email error:", err);
+    return false;
+  }
+}
+
+module.exports = { sendEmailOTP, generateOTP, verifyOtp, sendTwilioOTP, sendMesg91TP, sendWelcomeEmail }

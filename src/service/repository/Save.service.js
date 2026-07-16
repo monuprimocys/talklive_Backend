@@ -31,6 +31,7 @@ async function getSave(savePayload, includeOptions = [], attributesOptions = {} 
             attributes: attributesOptions,
             limit,
             offset,
+            distinct: true
         };
         
         // Use findAndCountAll to get both rows and count

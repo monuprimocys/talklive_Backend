@@ -4,6 +4,7 @@ const participant_service = require("../../service/repository/Participant.servic
 const message_service = require("../../service/repository/Message.service");
 const message_seen_service = require("../../service/repository/Message_seen.service");
 const { getUser } = require("../../service/repository/user.service");
+const music_save_service = require("../../service/repository/MusicSave.service");
 const {
   User,
   Message,
@@ -17,6 +18,7 @@ const {
   Feed,
   FeedMedia,
   Block,
+  Notification,
 } = require("../../../models");
 const { Op, Sequelize } = require("sequelize"); // Ensure you're importing Op
 
@@ -96,6 +98,23 @@ async function markChatMessagesSeen({
       emitEvent(sender.socket_id, "message_seen_status", messageData);
     }
   }
+
+  const unreadConversation =
+await message_seen_service.getUnreadConversationCount(
+    user_id
+);
+
+const user = await getUser({ user_id });
+
+if(user?.socket_id){
+
+    emitEvent(
+        user.socket_id,
+        "unread_conversation_count",
+        unreadConversation
+    );
+
+}
 
   return updatedMessages;
 }
@@ -278,6 +297,12 @@ async function chat_list(socket, data, emitEvent) {
       model: "Feed",
       alias_name: "Feed",
     },
+
+    {
+  foreign_key: "gift_id",
+  model: "Gift",
+  alias_name: "Gift",
+},
   ];
   const getChats_of_users =
     await participant_service.getParticipantWithoutPagenation({
@@ -559,6 +584,11 @@ async function request_list(socket, data, emitEvent) {
       model: "Feed",
       alias_name: "Feed",
     },
+     {
+    foreign_key: "gift_id",
+    model: "Gift",
+    alias_name: "Gift",
+  },
   ];
   const getChats_of_users =
     await participant_service.getParticipantWithoutPagenation({
@@ -806,6 +836,9 @@ async function message_list(socket, data, emitEvent) {
       required: false,
       include: [
         {
+      model: Music,
+    },
+        {
           model: User,
           attributes: [
             "user_id",
@@ -895,6 +928,12 @@ async function message_list(socket, data, emitEvent) {
       model: "Feed",
       alias_name: "Feed",
     },
+
+    {
+    foreign_key: "gift_id",
+    model: "Gift",
+    alias_name: "Gift",
+  },
   ];
 
   if (participants.Records.length > 0) {
@@ -925,6 +964,22 @@ async function message_list(socket, data, emitEvent) {
         },
         foreignKeysConfig,
       );
+
+      let savedMusicIds = new Set();
+
+const musicSaves = await music_save_service.getMusicSave(
+  { save_by: isUser.user_id },
+  [],
+  ["music_id"],
+  {
+    page: 1,
+    pageSize: 100000,
+  }
+);
+
+savedMusicIds = new Set(
+  (musicSaves?.Records || []).map(item => item.music_id)
+);
 
       const peerParticipant = participants.Records.find(
         (p) =>
@@ -966,6 +1021,26 @@ async function message_list(socket, data, emitEvent) {
       }
 
       chats.block_info = block_info;
+
+      chats.Records = chats.Records.map((message) => {
+  const messageJson = JSON.parse(JSON.stringify(message));
+
+  // Social Music
+  if (messageJson.Social?.Music) {
+    messageJson.Social.Music.isSaved = savedMusicIds.has(
+      messageJson.Social.Music.music_id
+    );
+  }
+
+  // Story Music
+  if (messageJson.Story?.music) {
+    messageJson.Story.music.isSaved = savedMusicIds.has(
+      messageJson.Story.music.music_id
+    );
+  }
+
+  return messageJson;
+});
 
       if (chats.Records?.length > 0) {
         emmitdata.push(chats);
@@ -1404,6 +1479,35 @@ async function unsend_message(socket, data, emitEvent) {
   }
 }
 
+async function get_unread_conversation_count(socket, data, emitEvent) {
+  const unreadConversation =
+    await message_seen_service.getUnreadConversationCount(
+      socket.authData.user_id
+    );
+
+      const unseenCount = await Notification.count({
+    where: {
+      reciever_id: socket.authData.user_id,
+      view_status: "unseen",
+    },
+  });
+
+  // emitEvent(
+  //   socket.id,
+  //   "unread_conversation_count",
+  //   unreadConversation
+  // );
+
+  emitEvent(
+  socket.id,
+  "unread_conversation_count",
+  {
+    unread_conversation_count: unreadConversation.count,
+    notification_count: unseenCount,
+  }
+);
+}
+
 module.exports = {
   typing,
   chat_list,
@@ -1415,4 +1519,5 @@ module.exports = {
   delete_for_me,
   delete_for_everyone,
   unsend_message,
+  get_unread_conversation_count,
 };

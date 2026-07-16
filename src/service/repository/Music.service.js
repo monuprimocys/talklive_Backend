@@ -106,10 +106,23 @@ async function deleteMusic(musicPayload) {
     }
 }
 
+async function decrementMusicTotalUse(music_id) {
+    await Music.decrement("total_use", {
+        by: 1,
+        where: {
+            music_id,
+            total_use: {
+                [Sequelize.Op.gt]: 0,
+            },
+        },
+    });
+}
+
 
 module.exports = {
     createMusic,
     getMusic,
     updateMusic,
-    deleteMusic
+    deleteMusic,
+    decrementMusicTotalUse,
 }

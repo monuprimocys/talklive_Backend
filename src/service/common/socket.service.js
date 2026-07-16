@@ -15,6 +15,7 @@ const {
   delete_for_everyone,
   delete_for_me,
   unsend_message,
+  get_unread_conversation_count,
 } = require("../../controller/chat_controller/Message.controller");
 const {
   start_live,
@@ -28,6 +29,7 @@ const {
   start_battle,
   join_battle,
   stop_battle,
+  get_live_with_hosts_socket,
 } = require("../../controller/Live_controller/Live.controller");
 const {
   leave_battle,
@@ -69,6 +71,9 @@ const initSocket = (serverwithsockets) => {
     listenToEvent(socket, "message_list", (data) => {
       message_list(socket, data, emitEvent);
     });
+    listenToEvent(socket, "get_unread_conversation_count", (data) => {
+  get_unread_conversation_count(socket, data, emitEvent);
+});
     listenToEvent(socket, "delete_for_me", (data) => {
       delete_for_me(socket, data, emitEvent);
     });
@@ -90,7 +95,7 @@ const initSocket = (serverwithsockets) => {
     listenToEventwithAck(socket, "get_chat_id", get_chat_id);
     // Live
     listenToEvent(socket, "start_live", (data) => {
-      start_live(socket, data, emitEvent, joinRoom);
+      start_live(socket, data, emitEvent, joinRoom, broadcastEvent);
     });
     listenToEvent(socket, "join_live", (data) => {
       join_live(socket, data, emitEvent, joinRoom, emitToRoom);
@@ -102,7 +107,7 @@ const initSocket = (serverwithsockets) => {
       activity_on_live(socket, data, emitEvent, emitToRoom);
     });
     listenToEvent(socket, "stop_live", (data) => {
-      stop_live(socket, data, emitEvent, emitToRoom, disposeRoom);
+      stop_live(socket, data, emitEvent, emitToRoom, disposeRoom, broadcastEvent);
     });
     listenToEvent(socket, "request_to_be_host", (data) => {
       request_to_be_host(socket, data, emitEvent, joinRoom, emitToRoom);
@@ -120,6 +125,10 @@ const initSocket = (serverwithsockets) => {
     listenToEvent(socket, "leave_live_as_host", (data) => {
       leave_live_as_host(socket, data, emitEvent, leaveRoom, emitToRoom);
     });
+
+listenToEvent(socket, "get_live_with_hosts", (data) => {
+    get_live_with_hosts_socket(socket, data, emitEvent);
+});
     // Battle
     listenToEvent(socket, "start_battle", (data) => {
       start_battle(socket, data, emitEvent, emitToRoom);

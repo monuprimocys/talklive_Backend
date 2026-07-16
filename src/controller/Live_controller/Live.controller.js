@@ -13,8 +13,9 @@ const { getCoinToCoinTransaction, getCoinToCoinTransaction_withoutPagination, up
 const {
     Live, User, Live_host
 } = require("../../../models");
+const { addVerificationStatusToUsers } = require("../../helper/subscription.helper");
 
-async function start_live(socket, data, emitEvent, joinRoom) {
+async function start_live(socket, data, emitEvent, joinRoom, broadcastEvent) {
 
     const isUser = await getUser({ user_id: socket.authData.user_id });
 
@@ -83,12 +84,18 @@ async function start_live(socket, data, emitEvent, joinRoom) {
             }
         )
         const new_live = await getLive({ live_id: newLive.live_id })
-        return emitEvent(socket.id, "start_live", new_live);
+         emitEvent(socket.id, "start_live", new_live);
+
+        broadcastEvent("live_list_updated", {
+    action: "start"
+});
+
+return;
     }
 
     return emitEvent(socket.id, "start_live", "Failed to start live");
 }
-async function stop_live(socket, data, emitEvent, emitToRoom, disposeRoom) {
+async function stop_live(socket, data, emitEvent, emitToRoom, disposeRoom, broadcastEvent) {
     const isUser = await getUser({ user_id: socket.authData.user_id });
 
     if (!isUser) {
@@ -124,6 +131,11 @@ async function stop_live(socket, data, emitEvent, emitToRoom, disposeRoom) {
             live_host: already_host
         });
         disposeRoom(already_live.Records[0].socket_room_id);
+
+           broadcastEvent("live_list_updated", {
+        action: "stop"
+    });
+
         return
     }
     return emitEvent(socket.id, "stop_live", "Failed to leave live");
@@ -771,8 +783,39 @@ async function get_live_with_hosts(req, res) {
             };
         })
     );
-    already_live.Pagination.totalCount = already_live_with_follow.length;
-    
+
+    // Add is_verified to each host's User object in nested Live.Live_hosts
+    const allUsers = [];
+    already_live_with_follow.forEach(host => {
+        if (host.User) allUsers.push(host.User);
+        if (host.Live?.Live_hosts) {
+            host.Live.Live_hosts.forEach(lh => {
+                if (lh.User) allUsers.push(lh.User);
+            });
+        }
+    });
+    const verifiedUsers = await addVerificationStatusToUsers(allUsers);
+    const verifiedMap = new Map();
+    verifiedUsers.forEach(u => verifiedMap.set(u.user_id, u));
+    const finalRecords = already_live_with_follow.map(host => {
+        const updated = { ...host };
+        if (updated.User) {
+            updated.User = verifiedMap.get(updated.User.user_id) || updated.User;
+        }
+        if (updated.Live?.Live_hosts) {
+            updated.Live = {
+                ...updated.Live,
+                Live_hosts: updated.Live.Live_hosts.map(lh => ({
+                    ...lh,
+                    User: lh.User ? (verifiedMap.get(lh.User.user_id) || lh.User) : lh.User,
+                })),
+            };
+        }
+        return updated;
+    });
+
+    already_live.Pagination.totalCount = finalRecords.length;
+
 
     console.log("already_live_with_follow", already_live.Pagination);
 
@@ -781,17 +824,195 @@ async function get_live_with_hosts(req, res) {
     return generalResponse(
         res,
         {
-            Records: already_live_with_follow,
+            Records: finalRecords,
             // Pagination: already_live.Pagination
             Pagination: {
                 ...already_live.Pagination,
-            total_records: already_live_with_follow.length
+                total_records: finalRecords.length
             }
         },
         "Live Found",
         true,
         true
     );
+}
+
+async function get_live_with_hosts_socket(socket, data, emitEvent) {
+
+   const user_id = socket.authData.user_id;
+
+    const isUser = await getUser({ user_id });
+
+    if (!isUser) {
+        socket.emit("live_with_hosts_error", {
+            success:false,
+            message:"Invalid User"
+        });
+        return;
+    }
+
+
+    const { page = 1, pageSize = 10 } = data || {};
+
+    let live_filter = {
+        is_live:true
+    };
+
+
+    let live_where = {};
+
+    if(process.env.ISDEMO != "true"){
+        live_where.is_demo = false;
+    }
+
+        const include = [
+        {
+            model: Live,
+            where: live_where,
+            include: [
+                {
+                    model: Live_host,
+                    include: [
+                        {
+                            model: User,
+                            attributes: {
+                                exclude: [
+                                    "password",
+                                    "otp",
+                                    "social_id",
+                                    "id_proof",
+                                    "selfie",
+                                    "device_token",
+                                    "dob",
+                                    "country_code",
+                                    "mobile_num",
+                                    "login_type",
+                                    "gender",
+                                    "state",
+                                    "city",
+                                    "bio",
+                                    "login_verification_status",
+                                    "is_private",
+                                    "is_admin",
+                                    "intrests",
+                                    "socket_id",
+                                    "available_coins",
+                                    "account_name",
+                                    "account_number",
+                                    "bank_name",
+                                    "swift_code",
+                                    "IFSC_code"
+                                ],
+                            },
+                        },
+                    ],
+                },
+            ],
+        },
+    ];
+
+
+    // aapka include same rahega
+
+
+    const already_live = await getLiveLive_host(
+        live_filter,
+        {
+            page,
+            pageSize
+        },
+        include
+    );
+
+
+    if(already_live.Records.length <= 0){
+
+    socket.emit("live_with_hosts",{
+    success: true,
+    message: "No Live Found",
+    Records: [],
+    Pagination: already_live.Pagination
+});
+
+        return;
+    }
+
+    
+    const already_live_with_follow = await Promise.all(
+        already_live.Records.map(async (hosts) => {
+
+            const following_true = await isFollow({
+                follower_id: isUser.user_id,
+                user_id: hosts.user_id,
+            });
+            const hostjsoned = hosts.toJSON()
+
+            return {
+                ...hostjsoned,
+                following: !!following_true,
+            };
+        })
+    );
+
+    // Add is_verified to each host's User object in nested Live.Live_hosts
+    const allUsers = [];
+    already_live_with_follow.forEach(host => {
+        if (host.User) allUsers.push(host.User);
+        if (host.Live?.Live_hosts) {
+            host.Live.Live_hosts.forEach(lh => {
+                if (lh.User) allUsers.push(lh.User);
+            });
+        }
+    });
+    const verifiedUsers = await addVerificationStatusToUsers(allUsers);
+    const verifiedMap = new Map();
+    verifiedUsers.forEach(u => verifiedMap.set(u.user_id, u));
+    const finalRecords = already_live_with_follow.map(host => {
+        const updated = { ...host };
+        if (updated.User) {
+            updated.User = verifiedMap.get(updated.User.user_id) || updated.User;
+        }
+        if (updated.Live?.Live_hosts) {
+            updated.Live = {
+                ...updated.Live,
+                Live_hosts: updated.Live.Live_hosts.map(lh => ({
+                    ...lh,
+                    User: lh.User ? (verifiedMap.get(lh.User.user_id) || lh.User) : lh.User,
+                })),
+            };
+        }
+        return updated;
+    });
+
+    // already_live.Pagination.totalCount = finalRecords.length;
+
+
+    // aapka following + verification logic same
+
+
+    // socket.emit(
+    //     "live_with_hosts",
+    //     {
+    //         Records: finalRecords,
+    //         Pagination:{
+    //             ...already_live.Pagination,
+    //             total_records:finalRecords.length
+    //         }
+    //     }
+    // );
+//     emitEvent(socket.id, "live_with_hosts", {
+//     Records: finalRecords,
+//     Pagination: {
+//         ...already_live.Pagination,
+//         total_records: finalRecords.length
+//     }
+// });
+
+emitEvent(socket.id, "live_with_hosts", {
+    Records: finalRecords,
+    Pagination: already_live.Pagination
+});
+
 }
 
 
@@ -1369,5 +1590,6 @@ module.exports = {
     join_battle,
     stop_battle,
     get_live_with_hosts,
-    get_live_with_hosts_id
+    get_live_with_hosts_id,
+    get_live_with_hosts_socket,
 };

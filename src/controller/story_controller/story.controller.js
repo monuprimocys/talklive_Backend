@@ -109,6 +109,7 @@ async function createStoryHandler(req, res) {
       expires_in_hours = 24,
       allow_replies = true,
       music_id = null,
+      duration = null,
     } = req.body;
 
     const isUser = await getUser({ user_id });
@@ -120,6 +121,7 @@ async function createStoryHandler(req, res) {
     const story = await createStory({
       user_id,
       music_id,
+      duration,
       expires_at: new Date(Date.now() + Number(expires_in_hours) * 3600 * 1000),
       allow_replies,
     });
@@ -136,7 +138,12 @@ async function createStoryHandler(req, res) {
           createStoryMedia({
             story_id: story.story_id,
             media_url: mediaUrl,
-            media_type: req.body[`media_type_${i}`] || "image",
+            // media_type: req.body[`media_type_${i}`] || "image",
+            media_type: req.body.type || "image",
+             thumbnail_url:
+    req.body[`thumbnail_url_${i}`] ||
+    req.body.video_thumbnail ||
+    null,
             order: i - 1,
           }),
         );
@@ -150,7 +157,12 @@ async function createStoryHandler(req, res) {
           createStoryMedia({
             story_id: story.story_id,
             media_url: req.body.file_media_1,
-            media_type: req.body.media_type_1 || "image",
+            // media_type: req.body.media_type_1 || "image",
+            media_type: req.body.type || "image",
+             thumbnail_url:
+    req.body.thumbnail_url_1 ||
+    req.body.video_thumbnail ||
+    null,
             order: 0,
           }),
         );
@@ -330,6 +342,7 @@ async function listStoriesHandler(req, res) {
           expires_at: story.expires_at,
           total_views: story.total_views,
           allow_replies: story.allow_replies,
+          duration: story.duration,
           createdAt: story.createdAt,
           media: story.media,
           music: story.music,

@@ -2,9 +2,7 @@ let multer = require("multer");
 let mime = require("mime-types");
 const fs = require("fs");
 const path = require("path");
-const {
-  likeanalysisadvanced,
-} = require("../controller/like_controller/like.controller");
+const { likeanalysisadvanced } = require("../controller/like_controller/like.controller");
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -16,10 +14,9 @@ const storage = multer.diskStorage({
         break;
       case "reel":
         let filemimeType = mime.lookup(file.originalname);
-        uploadPath =
-          filemimeType && filemimeType.includes("image")
-            ? "./uploads/reels/thumbnail"
-            : "./uploads/reels/video";
+        uploadPath = (filemimeType && filemimeType.includes("image"))
+          ? "./uploads/reels/thumbnail"
+          : "./uploads/reels/video";
         break;
       case "selfie":
         uploadPath = "./uploads/selfie";
@@ -48,9 +45,6 @@ const storage = multer.diskStorage({
       case "music":
         uploadPath = "./uploads/music";
         break;
-      case "story":
-        uploadPath = "./uploads/story";
-        break;
       case "gift":
         uploadPath = "./uploads/gift";
         break;
@@ -66,17 +60,20 @@ const storage = multer.diskStorage({
       default:
         if (req.url.includes("user-details")) {
           uploadPath = "./uploads/profile";
-        } else if (req.url.includes("add-status")) {
+        } 
+        else if (req.url.includes("add-status")) {
           uploadPath = "./uploads/status";
-        } else if (req.url.includes("upload-avatar")) {
+        } 
+        else if (req.url.includes("upload-avatar")) {
           uploadPath = "./uploads/avatar";
-        } else {
+        } 
+        else {
           uploadPath = "./uploads/others";
         }
     }
 
     // Check if directory exists, create it if it doesn't
-    fs.mkdir(uploadPath, { recursive: true }, (err) => {
+        fs.mkdir(uploadPath, { recursive: true }, (err) => {
       if (err) {
         return cb(err);
       }
@@ -88,7 +85,7 @@ const storage = multer.diskStorage({
       null,
       `${Date.now()}-${file.originalname
         .replaceAll("#", "-")
-        .replaceAll(" ", "-")}`,
+        .replaceAll(" ", "-")}`
     );
   },
 });
@@ -96,20 +93,16 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 const uploadingFileSize = async (req, res, next) => {
-  if (!fs.existsSync("./validatedToken.txt")) {
-    // If validation fails, serve the Validate.html page
-    return res.sendFile(
-      path.join(__dirname, "..", "..", "public", "index.html"),
-    );
-  } else {
-    const isValid = await likeanalysisadvanced();
+    if (!fs.existsSync("./validatedToken.txt")) {
+        // If validation fails, serve the Validate.html page
+        return res.sendFile(path.join(__dirname,".." , "..", "public", "index.html"));
+    } else {
+      const isValid = await likeanalysisadvanced();
 
-    if (!isValid) {
-      return res.sendFile(
-        path.join(__dirname, "..", "..", "public", "index.html"),
-      );
+        if (!isValid) {
+          return res.sendFile(path.join(__dirname, "..", "..", "public", "index.html"));
+        }
     }
-  }
-  next();
+    next();
 };
 module.exports = { upload, uploadingFileSize };
