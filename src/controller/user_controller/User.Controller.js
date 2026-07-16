@@ -7,12 +7,13 @@ const {
   isFollow,
   getFollow,
 } = require("../../service/repository/Follow.service");
-const { Follow, User, Social, Media, Sequelize } = require("../../../models");
+const { Follow, User, Social, Media, Sequelize, Notification } = require("../../../models");
 const { getReports } = require("../../service/repository/Report.service");
 const {
   getNotifications,
   updateNotification,
 } = require("../../service/repository/notification.service");
+const { addLevelToUsers } = require("../../helper/level.helper");
 
 async function findUser(req, res) {
   try {
@@ -152,11 +153,12 @@ async function findUser(req, res) {
 
     // Add is_verified field to each user record
     const verifiedRecords = await addVerificationStatusToUsers(filteredRecords);
+const levelRecords = await addLevelToUsers(verifiedRecords);
 
     return generalResponse(
       res,
       {
-        Records: verifiedRecords,
+        Records: levelRecords,
         Pagination: isUser.Pagination,
       },
       "User Found",
@@ -587,10 +589,42 @@ async function getPremiumStatus(req, res) {
   }
 }
 
+async function get_notificationCount(req, res) {
+  try {
+    const unseenCount = await Notification.count({
+      where: {
+        reciever_id: req.authData.user_id,
+        view_status: "unseen",
+      },
+    });
+
+    return generalResponse(
+      res,
+      {
+        unseenCount,
+      },
+      "Notification count fetched successfully",
+      true,
+      false,
+    );
+  } catch (error) {
+    console.error("Error fetching notification count:", error);
+
+    return generalResponse(
+      res,
+      {},
+      "Something went wrong while fetching notification count!",
+      false,
+      true,
+    );
+  }
+}
+
 module.exports = {
   findUser,
   findUser_Admin,
   get_notificationList,
+  get_notificationCount,
   update_notificationList,
   findUser_no_auth,
   findUser_not_following,

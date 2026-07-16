@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=800, initial-scale=1.0" />
+    <title>Welcome to {{app_name}}</title>
+  </head>
+
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      background-color: #f4f4f4;
+    "
+  >
+    <div style="height: 4rem"></div>
+
+    <table border="0" cellpadding="0" cellspacing="0" width="100%">
+      <tr>
+        <td align="center">
+          <table
+            border="0"
+            cellpadding="0"
+            cellspacing="0"
+            width="800"
+            style="
+              background-color: #ffffff;
+              font-family: 'Poppins', Arial, sans-serif;
+            "
+          >
+            <!-- Optional Banner -->
+            <!--
+            <tr>
+              <td align="center">
+                <img
+                  src="{{banner_image}}"
+                  alt="Welcome"
+                  style="width:100%;max-width:800px;height:auto;display:block;"
+                />
+              </td>
+            </tr>
+            -->
+
+            <tr>
+              <td align="center" style="padding: 50px 40px;">
+                <h2
+                  style="
+                    margin: 0;
+                    font-size: 30px;
+                    color: #000000;
+                    font-weight: 700;
+                  "
+                >
+                  Welcome to {{app_name}} 🎉
+                </h2>
+
+                <p
+                  style="
+                    margin: 30px 0 10px;
+                    font-size: 18px;
+                    color: #000000;
+                    font-weight: 600;
+                  "
+                >
+                  Hi {{name}},
+                </p>
+
+                <table
+                  border="0"
+                  cellpadding="0"
+                  cellspacing="0"
+                  width="85%"
+                >
+                  <tr>
+                    <td
+                      align="center"
+                      style="
+                        font-size: 15px;
+                        line-height: 28px;
+                        color: #333333;
+                      "
+                    >
+                      Welcome to <strong>{{app_name}}</strong>! We're so glad
+                      you're here.
+                      <br /><br />
+
+                      {{app_name}} is your space to create, share, and discover
+                      short videos that entertain, inspire, and connect you with
+                      a community that loves what you love.
+                    </td>
+                  </tr>
+                </table>
+
+                <h3
+                  style="
+                    margin: 40px 0 20px;
+                    font-size: 22px;
+                    color: #000000;
+                  "
+                >
+                  Here's how to get started
+                </h3>
+
+                <table
+                  border="0"
+                  cellpadding="0"
+                  cellspacing="0"
+                  width="80%"
+                >
+                  <tr>
+                    <td
+                      style="
+                        font-size: 15px;
+                        color: #333333;
+                        line-height: 30px;
+                      "
+                    >
+                      ✅ <strong>Set up your profile</strong><br />
+                      Add a photo and bio so people can find and follow you.
+                      <br /><br />
+
+                      ✅ <strong>Explore your feed</strong><br />
+                      Discover trending videos and creators picked just for you.
+                      <br /><br />
+
+                      ✅ <strong>Create your first video</strong><br />
+                      Use our built-in effects, sounds, and filters to bring
+                      your ideas to life.
+                    </td>
+                  </tr>
+                </table>
+
+                <table
+                  border="0"
+                  cellpadding="0"
+                  cellspacing="0"
+                  width="85%"
+                  style="margin-top: 40px;"
+                >
+                  <tr>
+                    <td
+                      align="center"
+                      style="
+                        font-size: 15px;
+                        line-height: 28px;
+                        color: #333333;
+                      "
+                    >
+                      Got questions or feedback?
+                      <br />
+                      We'd love to hear from you — just reply to this email.
+                    </td>
+                  </tr>
+                </table>
+
+                <p
+                  style="
+                    margin-top: 40px;
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: #000000;
+                  "
+                >
+                  See you on {{app_name}}!
+                </p>
+
+                <p
+                  style="
+                    margin-top: 10px;
+                    font-size: 16px;
+                    color: #555555;
+                  "
+                >
+                  — The {{app_name}} Team
+                </p>
+
+                <!-- Optional Store Links -->
+                <!--
+                <table
+                  border="0"
+                  cellpadding="0"
+                  cellspacing="0"
+                  width="80%"
+                  style="margin:40px auto 0;"
+                >
+                  <tr>
+
+                    <td align="center" style="padding:10px;">
+                      <a href="{{website_link}}" target="_blank" style="text-decoration:none;color:#000;">
+                        <img
+                          src="{{baseUrl}}image/websiteicon.png"
+                          alt="Website"
+                          style="width:50px;height:50px;border:0;"
+                        />
+                        <p style="margin:8px 0 0;font-size:14px;">
+                          Visit Website
+                        </p>
+                      </a>
+                    </td>
+
+                    <td align="center" style="padding:10px;">
+                      <a href="{{android_link}}" target="_blank" style="text-decoration:none;color:#000;">
+                        <img
+                          src="{{baseUrl}}image/playstore.png"
+                          alt="Google Play"
+                          style="width:50px;height:50px;border:0;"
+                        />
+                        <p style="margin:8px 0 0;font-size:14px;">
+                          Google Play
+                        </p>
+                      </a>
+                    </td>
+
+                    <td align="center" style="padding:10px;">
+                      <a href="{{ios_link}}" target="_blank" style="text-decoration:none;color:#000;">
+                        <img
+                          src="{{baseUrl}}image/apple.png"
+                          alt="App Store"
+                          style="width:50px;height:50px;border:0;"
+                        />
+                        <p style="margin:8px 0 0;font-size:14px;">
+                          App Store
+                        </p>
+                      </a>
+                    </td>
+
+                  </tr>
+                </table>
+                -->
+              </td>
+            </tr>
+
+            <tr>
+              <td
+                align="center"
+                style="
+                  background-color: #000000;
+                  padding: 14px;
+                "
+              >
+                <p
+                  style="
+                    margin: 0;
+                    color: #ffffff;
+                    font-size: 12px;
+                  "
+                >
+                  {{copy_right}}
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <div style="height: 4rem"></div>
+  </body>
+</html>

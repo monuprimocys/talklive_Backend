@@ -14,6 +14,8 @@ const {
   getPresignedUploadUrl,
 } = require("../../service/common/s3.service");
 const { isUserVerified } = require("../../helper/subscription.helper");
+const { sendPushNotification } = require("../../service/common/onesignal.service");
+const { createNotification } = require("../../service/repository/notification.service");
 
 async function updateProfile(req, res) {
   try {
@@ -239,6 +241,44 @@ async function updateProfile(req, res) {
         user_id: isUser.user_id,
       });
       const updatedUser = await getUser({ user_id });
+
+      // Send Welcome Notification for New User
+if (
+  req.body.new_user === true ||
+  req.body.new_user === "true"
+) {
+  // Push Notification
+  if (updatedUser.device_token) {
+    console.log("📲 Sending welcome push notification...");
+    console.log("Device Token:", updatedUser.device_token);
+
+    const result = await sendPushNotification({
+      playerIds: [updatedUser.device_token],
+      title: "Welcome to TokLive 🎉",
+      message:
+        "Your stage starts now. Start exploring and create your first video!",
+      data: {
+        type: "welcome",
+      },
+    });
+
+    console.log("✅ Push notification result:", result);
+  } else {
+    console.log("⚠️ Device token not found. Push notification skipped.");
+  }
+
+  // In-App Notification
+  await createNotification({
+    notification_title: "Welcome to TokLive",
+    notification_type: "Welcome",
+    sender_id: updatedUser.user_id, // ya 0/System
+    reciever_id: updatedUser.user_id,
+    notification_description: {
+      description: "Welcome to TokLive! Your stage starts now.",
+      user_id: updatedUser.user_id,
+    },
+  });
+}
 
       // Add is_verified field
       const verified = await isUserVerified(user_id);

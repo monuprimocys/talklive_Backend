@@ -9,6 +9,7 @@ const {
   FeedReport,
   User,
   FeedCommentLike,
+  FeedPin,
 } = require("../../../models");
 const { addVerificationStatusToUsers } = require("../../helper/subscription.helper");
 
@@ -63,6 +64,18 @@ async function getFeed(
       if (searchText) {
         whereCondition.content = {
           [Sequelize.Op.iLike]: `%${searchText}%`,
+        };
+      }
+    }
+
+      if (filterPayload.location !== undefined) {
+      const locationText = filterPayload.location?.trim();
+
+      delete whereCondition.location;
+
+      if (locationText) {
+        whereCondition.location = {
+          [Sequelize.Op.iLike]: `%${locationText}%`,
         };
       }
     }
@@ -228,6 +241,16 @@ async function getFeed(
       subQuery: false,
     });
 
+    const pinUserId = filterPayload.user_id || user_id;
+
+    const pinnedFeeds = pinUserId
+      ? await FeedPin.findAll({
+          where: { pin_by: pinUserId },
+        })
+      : [];
+
+    const pinnedIds = new Set(pinnedFeeds.map((item) => item.feed_id));
+
     // Fetch mentioned users details
     const mentionedUserIds = [
       ...new Set(rows.flatMap((feed) => feed.mentioned_users || [])),
@@ -252,8 +275,21 @@ async function getFeed(
     }
 
   // Step 1: Convert rows to JSON
+// let feedsData = rows.map((feed) => {
+//   const data = feed.toJSON();
+
+//   data.mentioned_users = (data.mentioned_users || [])
+//     .map((id) => userMap[id])
+//     .filter(Boolean);
+
+//   return data;
+// });
+
 let feedsData = rows.map((feed) => {
   const data = feed.toJSON();
+
+  // isPinned parameter
+  data.isPinned = pinnedIds.has(data.feed_id);
 
   data.mentioned_users = (data.mentioned_users || [])
     .map((id) => userMap[id])
@@ -282,6 +318,12 @@ feedsData = feedsData.map(feed => ({
 
 // FINAL
 const updatedRows = feedsData;
+
+updatedRows.sort((a, b) => {
+  if (a.isPinned && !b.isPinned) return -1;
+  if (!a.isPinned && b.isPinned) return 1;
+  return 0;
+});
     const totalPages = Math.ceil(count / limit);
 
     return {
@@ -1391,6 +1433,22 @@ async function getFeedByIdnew(feedId, user_id) {
   }
 }
 
+async function createPin(data) {
+  return await FeedPin.create(data);
+}
+
+async function deletePin(data) {
+  return await FeedPin.destroy({
+    where: data,
+  });
+}
+
+async function getPin(data) {
+  return await FeedPin.findAll({
+    where: data,
+  });
+}
+
 module.exports = {
   createFeed,
   getFeed,
@@ -1418,4 +1476,7 @@ module.exports = {
   getFeedByIdAdmin,
   getFeedById,
   getFeedByIdnew,
+  createPin,
+  deletePin,
+  getPin,
 };

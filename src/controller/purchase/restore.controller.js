@@ -15,6 +15,7 @@ const db = require("../../../models/index");
  */
 const restorePurchases = async (req, res) => {
   try {
+    
     const user_id = req.authData.user_id;
     const { revenuecat_customer_id } = req.body;
 

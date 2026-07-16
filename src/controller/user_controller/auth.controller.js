@@ -11,12 +11,42 @@ const {
   generateOTP,
   verifyOtp,
   sendTwilioOTP,
+  sendWelcomeEmail,
 } = require("../../service/common/otp.service");
 const { generateToken } = require("../../service/common/token.service");
 const filterData = require("../../helper/filter.helper");
 const {
   gettransaction_conf,
 } = require("../../service/repository/Transactions/transaction_conf.service");
+const { sendPushNotification } = require("../../service/common/onesignal.service");
+const { createNotification } = require("../../service/repository/notification.service");
+const crypto = require("crypto");
+
+async function generateUniqueUsername(email) {
+  let baseUsername = "";
+
+  if (email) {
+    baseUsername = email
+      .split("@")[0]
+      .toLowerCase()
+      .replace(/[^a-z0-9._]/g, "");
+  }
+
+  if (!baseUsername) {
+    baseUsername = "user";
+  }
+
+  let username = baseUsername;
+  let counter = 1;
+
+  while (await getUser({ user_name: username })) {
+    username = `${baseUsername}${counter}`;
+    counter++;
+  }
+
+  return username;
+}
+
 
 async function signupUser(req, res) {
   try {
@@ -37,9 +67,17 @@ async function signupUser(req, res) {
     let otp = await generateOTP();
 
     if (type == "email") {
-      allowedUpdateFields = ["email", "login_type", "voip_token"];
+      allowedUpdateFields = ["email", "login_type"];
       try {
         filteredData = updateFieldsFilter(req.body, allowedUpdateFields, true);
+
+        if (req.body.device_token) {
+          filteredData.device_token = req.body.device_token;
+        }
+
+        if (req.body.voip_token) {
+          filteredData.voip_token = req.body.voip_token;
+        }
       } catch (err) {
         console.log(err);
 
@@ -60,10 +98,18 @@ async function signupUser(req, res) {
         "login_type",
         "country_short_name",
         "country",
-        "voip_token",
+        // "voip_token",
       ];
       try {
         filteredData = updateFieldsFilter(req.body, allowedUpdateFields, true);
+
+        if (req.body.voip_token) {
+          filteredData.voip_token = req.body.voip_token;
+        }
+
+        if (req.body.device_token) {
+          filteredData.device_token = req.body.device_token;
+        }
       } catch (err) {
         console.log(err);
 
@@ -91,13 +137,35 @@ async function signupUser(req, res) {
       allowedUpdateFields = [
         "email",
         "login_type",
-        "device_token",
+        // "device_token",
         "first_name",
         "last_name",
-        "voip_token",
+        // "voip_token",
+        //  "profile_pic"
       ];
       try {
         filteredData = updateFieldsFilter(req.body, allowedUpdateFields, true);
+
+        // Optional fields
+        if (req.body.device_token) {
+          filteredData.device_token = req.body.device_token;
+        }
+
+        if (req.body.voip_token) {
+          filteredData.voip_token = req.body.voip_token;
+        }
+
+        if (req.body.profile_pic) {
+          filteredData.profile_pic = req.body.profile_pic;
+        }
+
+        if (req.body.full_name) {
+          filteredData.full_name = req.body.full_name;
+        }
+
+        //         if (req.body.profile_pic) {
+        //   filteredData.profile_pic = req.body.profile_pic;
+        // }
       } catch (err) {
         console.log(err);
 
@@ -125,8 +193,17 @@ async function signupUser(req, res) {
         transaction_conf_data.Records[0].welcome_bonus;
       filteredData.otp = isdemo ? "1234" : otp;
 
+      // New user: platforms array starts with just the current login platform
       filteredData.platforms = [req.body.platform];
+
+      // console.log("filteredData:", filteredData);
+
+      if (!filteredData.user_name) {
+        filteredData.user_name = await generateUniqueUsername(filteredData.email);
+      }
       const newUser = await createUser(filteredData);
+
+      // console.log("newUser.device_token:", newUser.device_token);
 
       const keysToRemove = [
         "password",
@@ -141,6 +218,13 @@ async function signupUser(req, res) {
       // const countryEntry = await createCountry(filteredData)
       if (type == "email") {
         const sendOtp = isdemo ? true : await sendEmailOTP(req.body.email, otp);
+
+        await sendWelcomeEmail(
+          newUser.email,
+          newUser.first_name || "User"
+        );
+
+
         if (sendOtp) {
           return generalResponse(
             res,
@@ -164,10 +248,10 @@ async function signupUser(req, res) {
         sendOtp = isdemo
           ? true
           : await sendTwilioOTP(
-              newUser.dataValues.country_code,
-              newUser.dataValues.mobile_num,
-              otp,
-            );
+            newUser.dataValues.country_code,
+            newUser.dataValues.mobile_num,
+            otp,
+          );
 
         if (sendOtp) {
           return generalResponse(
@@ -188,6 +272,27 @@ async function signupUser(req, res) {
         }
       }
       if (type == "social") {
+
+        if (newUser.device_token) {
+          await sendPushNotification({
+            playerIds: [newUser.device_token],
+            title: "Welcome to TokLive 🎉",
+            message: "Your stage starts now. Start exploring and create your first video!",
+            data: { type: "welcome" },
+          });
+        }
+
+        // In-App Notification
+        await createNotification({
+          notification_title: "Welcome to TokLive",
+          notification_type: "Welcome",
+          sender_id: newUser.user_id,
+          reciever_id: newUser.user_id,
+          notification_description: {
+            description: "Welcome to TokLive! Your stage starts now.",
+            user_id: newUser.user_id,
+          },
+        });
         const token = await generateToken({
           user_id: newUser.user_id,
           email: newUser.email,
@@ -210,23 +315,60 @@ async function signupUser(req, res) {
     } else {
       if (type == "social") {
         // allowedUpdateFields = ['email', 'full_name', 'user_name', 'country', 'login_type', 'device_token']
-        let existingPlatform = isUser.platforms || [];
 
-        if (!existingPlatform.includes(req.body.platform)) {
-          existingPlatform.push(req.body.platform);
+        if (!isUser.user_name || !isUser.user_name.trim()) {
+          const username = await generateUniqueUsername(isUser.email);
+          await updateUser(
+            { user_name: username },
+            { user_id: isUser.user_id }
+          );
+
+          isUser.user_name = username;
         }
-        const updatePayload = { platforms: existingPlatform };
+
+        // Always store only the current (last) login platform - no accumulation
+        const updatePayload = { platforms: [req.body.platform] };
         if (req.body.voip_token) {
           updatePayload.voip_token = req.body.voip_token;
         }
-        const updatedUser = await updateUser(updatePayload, {
+
+        if (req.body.profile_pic) {
+          updatePayload.profile_pic = req.body.profile_pic;
+        }
+
+        if (req.body.device_token) {
+          updatePayload.device_token = req.body.device_token;
+        }
+
+        if (req.body.full_name) {
+          updatePayload.full_name = req.body.full_name;
+        }
+
+        // const updatedUser = await updateUser(updatePayload, {
+        //   user_id: isUser.user_id,
+        // });
+        // const token = await generateToken({
+        //   user_id: isUser.user_id,
+        //   email: isUser.email,
+        //   user_name: isUser.user_name,
+        //   login_type: isUser.login_type,
+        // });
+
+        // const newUser = !(isUser.user_name ?? "").trim();
+
+        await updateUser(updatePayload, {
           user_id: isUser.user_id,
         });
-        const token = await generateToken({
+
+        const updatedUser = await getUser({
           user_id: isUser.user_id,
-          email: isUser.email,
-          user_name: isUser.user_name,
-          login_type: isUser.login_type,
+        });
+
+        const token = await generateToken({
+          user_id: updatedUser.user_id,
+          email: updatedUser.email,
+          user_name: updatedUser.user_name,
+          login_type: updatedUser.login_type,
         });
 
         const newUser = !(isUser.user_name ?? "").trim();
@@ -235,11 +377,12 @@ async function signupUser(req, res) {
           res,
           {
             token: token,
-            user: isUser,
+            // user: isUser,
+            user: updatedUser,
             newUser,
           },
           "User Already Exist! ",
-          false,
+          true,
           true,
         );
       }
@@ -252,20 +395,34 @@ async function signupUser(req, res) {
           otp = "1234";
         }
 
-        const sendOtp = isdemo ? true : await sendEmailOTP(req.body.email, otp);
-        let existingPlatform = isUser.platforms || [];
+        let updated = false;
 
-        if (!existingPlatform.includes(req.body.platform)) {
-          existingPlatform.push(req.body.platform);
+        if (!isUser.user_name || !isUser.user_name.trim()) {
+          const username = await generateUniqueUsername(isUser.email);
+
+          await updateUser(
+            { user_name: username },
+            { user_id: isUser.user_id }
+          );
+
+          isUser.user_name = username;
         }
+
+        const sendOtp = isdemo ? true : await sendEmailOTP(req.body.email, otp);
+
+        //        await sendWelcomeEmail(
+        //   newUser.email,
+        //   newUser.first_name || "User"
+        // );
 
         updated = isdemo
           ? true
           : await (async () => {
-              const updatePayload = { otp: otp, platforms: existingPlatform };
-              if (req.body.voip_token) updatePayload.voip_token = req.body.voip_token;
-              return await updateUser(updatePayload, { user_id: isUser.user_id });
-            })();
+            // Always store only the current (last) login platform - no accumulation
+            const updatePayload = { otp: otp, platforms: [req.body.platform] };
+            if (req.body.voip_token) updatePayload.voip_token = req.body.voip_token;
+            return await updateUser(updatePayload, { user_id: isUser.user_id });
+          })();
         let newUser = false;
         // if (isUser.login_verification_status) {
         //     newUser = false
@@ -273,6 +430,7 @@ async function signupUser(req, res) {
         if (!isUser.user_name || isUser.user_name.trim() === "") {
           newUser = true;
         }
+
         if (sendOtp && updated) {
           return generalResponse(
             res,
@@ -309,11 +467,18 @@ async function signupUser(req, res) {
         if (!isUser.user_name || isUser.user_name.trim() === "") {
           newUser = true;
         }
-        let existingPlatform = isUser.platforms || [];
 
-        if (!existingPlatform.includes(req.body.platform)) {
-          existingPlatform.push(req.body.platform);
-        }
+
+        //         if (!isUser.user_name || !isUser.user_name.trim()) {
+        //   const username = await generateUniqueUsername();
+
+        //   await updateUser(
+        //     { user_name: username },
+        //     { user_id: isUser.user_id }
+        //   );  
+
+        //   isUser.user_name = username;
+        // }
 
         sendOtp = isdemo
           ? true
@@ -321,10 +486,11 @@ async function signupUser(req, res) {
         updated = isdemo
           ? true
           : await (async () => {
-              const updatePayload = { otp: otp, platforms: existingPlatform };
-              if (req.body.voip_token) updatePayload.voip_token = req.body.voip_token;
-              return await updateUser(updatePayload, { user_id: isUser.user_id });
-            })();
+            // Always store only the current (last) login platform - no accumulation
+            const updatePayload = { otp: otp, platforms: [req.body.platform] };
+            if (req.body.voip_token) updatePayload.voip_token = req.body.voip_token;
+            return await updateUser(updatePayload, { user_id: isUser.user_id });
+          })();
         if (sendOtp && updated) {
           return generalResponse(
             res,
@@ -347,15 +513,18 @@ async function signupUser(req, res) {
     }
   } catch (error) {
     console.error("Error in SignUp", error);
+    console.error(error.stack);
     return generalResponse(
       res,
       {},
-      "Something went wrong while Signin!",
+      // "Something went wrong while Signin!",
+      error.message,
       false,
       true,
     );
   }
 }
+
 
 async function OtpVerification(req, res) {
   try {

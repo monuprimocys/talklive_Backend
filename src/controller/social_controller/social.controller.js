@@ -24,8 +24,10 @@ const {
 const { getLike } = require("../../service/repository/Like.service");
 const { createMedia } = require("../../service/repository/Media.service");
 const {
+  createMusic,
   updateMusic,
   getMusic,
+  decrementMusicTotalUse,
 } = require("../../service/repository/Music.service");
 const {
   deleteNotification,
@@ -37,13 +39,41 @@ const {
   deleteSocial,
   updateSocial,
   getFollowerSocials,
+  createPin,
+  deletePin,
+  getPin,
 } = require("../../service/repository/SocialMedia.service");
 const {
   getUser,
   updateUser,
 } = require("../../service/repository/user.service");
 const { addVerificationStatusToUsers } = require("../../helper/subscription.helper");
+const music_save_service=require("../../service/repository/MusicSave.service");
 const { Op, Sequelize } = require("sequelize");
+
+
+function parseIntegerArray(value) {
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+
+  let parsedValue = value;
+  if (typeof value === "string") {
+    parsedValue = JSON.parse(value);
+  }
+
+  if (!Array.isArray(parsedValue)) {
+    throw new Error("Expected an array");
+  }
+
+  return parsedValue.map((item) => {
+    const number = Number(item);
+    if (!Number.isInteger(number)) {
+      throw new Error("Expected an array of integer IDs");
+    }
+    return number;
+  });
+}
 
 async function uploadMediaS3(req, res) {
   try {
@@ -140,7 +170,7 @@ async function uploadSocial(req, res) {
     if (social_type === "reel") {
       if (process.env.MEDIAFLOW === "S3") {
         if (!req.body.file_media_2) {
-          return generalResponse(
+          return generalResponse( 
             res,
             {},
             "File Data is missing",
@@ -166,11 +196,18 @@ async function uploadSocial(req, res) {
       "music_id",
       "latitude",
       "longitude",
+      "audio_file",
+      "is_original",
+      "mentioned_users",
     ];
     let filteredData;
     try {
       filteredData = updateFieldsFilter(req.body, allowedFields);
       filteredData.user_id = user_id;
+
+      filteredData.mentioned_users = parseIntegerArray(
+        filteredData.mentioned_users,
+      );
 
       // Handle music_id - set to null if empty, 0, or invalid
       if (
@@ -255,6 +292,47 @@ async function uploadSocial(req, res) {
         return generalResponse(res, {}, "Failed to Upload reel", false, true);
       }
 
+      // ==============================
+// ORIGINAL AUDIO
+// ==============================
+
+if (
+    filteredData.is_original &&
+    filteredData.audio_file &&
+    !filteredData.music_id
+) {
+
+    const music = await createMusic({
+
+        music_title: "Original audio",
+
+        owner: isUser.user_name,
+
+        uploader_id: user_id,
+
+        source_social_id: reel.social_id,
+
+        // music_thumbnail: post_media,
+
+        music_url: filteredData.audio_file,
+
+        total_use: 1,
+
+        is_original: true,
+    });
+
+  await updateSocial(
+    {
+        social_id: reel.social_id,
+    },
+    {
+        music_id: music.music_id,
+    }
+);
+
+    reel.music_id = music.music_id;
+}
+
       /* ---- SAVE ORIGINAL VIDEO ---- */
       await createMedia({
         social_id: reel.social_id,
@@ -303,14 +381,38 @@ async function uploadSocial(req, res) {
       );
 
       /* ---- UPDATE MUSIC COUNT ---- */
-      if (reel.music_id) {
-        const get_music = await getMusic({ music_id: reel.music_id });
-        if (get_music?.Pagination?.total_records > 0) {
-          await updateMusic({
-            total_use: get_music.Records[0].total_use + 1,
-          });
-        }
-      }
+      // if (reel.music_id) {
+      //   const get_music = await getMusic({ music_id: reel.music_id });
+      //   if (get_music?.Pagination?.total_records > 0) {
+      //     await updateMusic({
+      //       total_use: get_music.Records[0].total_use + 1,
+      //     });
+      //   }
+      // }
+      if (
+    reel.music_id &&
+    !filteredData.is_original
+) {
+
+    const get_music = await getMusic({
+        music_id: reel.music_id
+    });
+
+    if(get_music?.Pagination?.total_records){
+
+      await updateMusic(
+    {
+        music_id: reel.music_id
+    },
+    {
+        total_use:
+            get_music.Records[0].total_use + 1
+    }
+);
+
+    }
+
+}
 
       return generalResponse(
         res,
@@ -421,6 +523,7 @@ async function showSocials(req, res) {
         }
 
         filteredData.user_id = followingIds;
+        
 
         socials = await getSocial(
           filteredData,
@@ -452,6 +555,7 @@ async function showSocials(req, res) {
           order,
         );
       }
+      
 
       // Filter out blocked users
       if (socials?.Records?.length <= 0) {
@@ -468,6 +572,41 @@ async function showSocials(req, res) {
         );
       }
 
+      const pinUserId = req.body.user_id || user_id;
+
+      const pinned = await getPin({ pin_by: pinUserId });
+
+const pinnedIds = new Set(
+  pinned.map((p) => p.social_id)
+);
+
+console.log("Logged User =>", user_id);
+console.log("Pinned Records =>", pinned);
+console.log("Pinned IDs =>", [...pinnedIds]);
+
+console.log(
+  "Feed Social IDs =>",
+  socials.Records.map((s) => s.social_id)
+);
+
+socials.Records.sort((a, b) => {
+
+  console.log(
+    "Comparing:",
+    a.social_id,
+    pinnedIds.has(Number(a.social_id)),
+    b.social_id,
+    pinnedIds.has(Number(b.social_id))
+  );
+  const aPinned = pinnedIds.has(a.social_id);
+  const bPinned = pinnedIds.has(b.social_id);
+
+  if (aPinned && !bPinned) return -1;
+  if (!aPinned && bPinned) return 1;
+
+  return 0;
+});
+
       // Now, you can safely iterate over the records and add the `isLiked` property
       const likes = await getLike({ like_by: user_id });
       const likedSocialIds = new Set(
@@ -477,6 +616,21 @@ async function showSocials(req, res) {
       const savedSocialIds = new Set(
         saves.Records.map((save) => save.social_id),
       );
+
+      const musicSaves = await music_save_service.getMusicSave(
+  { save_by: user_id },
+  [],
+  ["music_id"],
+  {
+    page: 1,
+    pageSize: 100000,
+  }
+);
+
+const savedMusicIds = new Set(
+  (musicSaves?.Records || []).map((item) => item.music_id)
+);
+      
 
       // Add an `isLiked` property to each social record
       socials.Records = await Promise.all(
@@ -497,6 +651,12 @@ async function showSocials(req, res) {
           // Add the isLiked, total_comments, and total_likes properties
           socialJson.isLiked = likedSocialIds.has(socialJson.social_id);
           socialJson.isSaved = savedSocialIds.has(socialJson.social_id);
+          socialJson.isPinned = pinnedIds.has(Number(socialJson.social_id));
+          if (socialJson.Music) {
+  socialJson.Music.isSaved = savedMusicIds.has(
+    socialJson.Music.music_id
+  );
+}
           socialJson.total_comments = comments.Pagination.total_records;
           socialJson.total_likes = likes.Pagination.total_records;
           socialJson.total_saves = saves.Pagination.total_records;
@@ -1032,6 +1192,14 @@ async function deleteSocials(req, res) {
         );
       }
 
+      // Social exists
+const socialData = socials.Records[0];
+
+// Decrease music total_use
+if (socialData.music_id) {
+  await decrementMusicTotalUse(socialData.music_id);
+}
+
       // const deletedSocials = await deleteSocial(filteredData)
       const deletedSocial = await deleteSocial({
         social_id: filteredData.social_id,
@@ -1341,6 +1509,24 @@ async function searchSocials(req, res) {
       [["createdAt", "DESC"]],
     );
 
+let savedMusicIds = new Set();
+
+if (user_id) {
+  const musicSaves = await music_save_service.getMusicSave(
+    { save_by: user_id },
+    [],
+    ["music_id"],
+    {
+      page: 1,
+      pageSize: 100000,
+    }
+  );
+
+  savedMusicIds = new Set(
+    (musicSaves?.Records || []).map((item) => item.music_id)
+  );
+} 
+
     if (!socials?.Records?.length) {
       return generalResponse(
         res,
@@ -1354,9 +1540,143 @@ async function searchSocials(req, res) {
       );
     }
 
+    socials.Records = socials.Records.map((social) => {
+   const socialJson = JSON.parse(JSON.stringify(social));
+
+   if (socialJson.Music) {
+      socialJson.Music.isSaved = savedMusicIds.has(
+         socialJson.Music.music_id
+      );
+   }
+
+   return socialJson;
+});
+
     return generalResponse(res, socials, "Socials Found", true, false);
   } catch (error) {
     console.log(error);
+    return generalResponse(res, {}, "Something went wrong", false, true);
+  }
+}
+
+async function searchSocialsByLocation(req, res) {
+  try {
+    const user_id = req.authData.user_id;
+    const { location, page = 1, pageSize = 10 } = req.body;
+
+    const filteredData = {
+      status: true,
+      deleted_by_user: false,
+      location,
+    };
+
+    const socials = await getSocial(
+      filteredData,
+      { page, pageSize },
+      [],
+      [["createdAt", "DESC"]]
+    );
+
+ let savedMusicIds = new Set();
+
+if (user_id) {
+  const musicSaves = await music_save_service.getMusicSave(
+    { save_by: user_id },
+    [],
+    ["music_id"],
+    {
+      page: 1,
+      pageSize: 100000,
+    }
+  );
+
+  savedMusicIds = new Set(
+    (musicSaves?.Records || []).map((item) => item.music_id)
+  );
+}
+
+    if (!socials?.Records?.length) {
+      return generalResponse(
+        res,
+        {
+          Records: [],
+          Pagination: {},
+        },
+        "No Socials Found",
+        true,
+        true
+      );
+    }
+
+    socials.Records = socials.Records.map((social) => {
+  const socialJson = JSON.parse(JSON.stringify(social));
+
+  if (socialJson.Music) {
+    socialJson.Music.isSaved = savedMusicIds.has(
+      socialJson.Music.music_id
+    );
+  }
+
+  return socialJson;
+});
+
+    return generalResponse(
+      res,
+      socials,
+      "Socials Found",
+      true,
+      false
+    );
+  } catch (error) {
+    console.log(error);
+    return generalResponse(
+      res,
+      {},
+      "Something went wrong",
+      false,
+      true
+    );
+  }
+}
+
+async function pin_unpin(req, res) {
+  try {
+    const user_id = req.authData.user_id;
+
+    if (!req.body.social_id) {
+      return generalResponse(
+        res,
+        {},
+        "social_id is required",
+        false,
+        true,
+        400,
+      );
+    }
+
+    const data = {
+      social_id: req.body.social_id,
+      pin_by: user_id,
+    };
+
+    const unPin = await deletePin(data);
+
+    if (unPin > 0) {
+      return generalResponse(
+        res,
+        {},
+        "Social Unpinned Successfully",
+        true,
+        true,
+      );
+    }
+
+    await createPin(data);
+
+    return generalResponse(res, {}, "Social Pinned Successfully", true, true);
+  } catch (error) {
+    console.log(error);
+
     return generalResponse(res, {}, "Something went wrong", false, true);
   }
 }
@@ -1374,4 +1694,6 @@ module.exports = {
   showSocialswithoutauth,
   getSocialsOfFollowers,
   searchSocials,
+  searchSocialsByLocation,
+  pin_unpin,
 };

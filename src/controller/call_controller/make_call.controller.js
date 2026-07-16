@@ -12,7 +12,6 @@ const {
   createMessageSeen,
   getMessageSeenCount,
 } = require("../../service/repository/Message_seen.service");
-const filterData = require("../../helper/filter.helper");
 const BalanceValidator = require("../../service/payment/balance-validator.service");
 const CoinsService = require("../../service/payment/coins.service");
 const CallTrackingService = require("../../service/payment/call-tracking.service");
@@ -61,7 +60,8 @@ async function makeCall(req, res) {
       }
     }
 
-    const user_id = caller_id;
+    // 🔒 FIX: normalize to Number so all downstream comparisons are type-safe
+    const user_id = Number(caller_id);
 
     // ✅ Caller user
     const glob_user = await getUser({ user_id });
@@ -156,10 +156,13 @@ async function makeCall(req, res) {
     // ─────────────────────────────────────────────────────────────
     try {
       const participantsSimple = participants?.Records || [];
-      const receivers = participantsSimple.filter((p) => p.user_id !== user_id);
+      // 🔒 FIX: Number-safe comparison
+      const receiversForPayment = participantsSimple.filter(
+        (p) => Number(p.user_id) !== Number(user_id)
+      );
 
-      if (receivers.length === 1) {
-        const recipient_id = receivers[0].user_id;
+      if (receiversForPayment.length === 1) {
+        const recipient_id = receiversForPayment[0].user_id;
         const txnType =
           String(call_type).toLowerCase() === "video"
             ? "VIDEO_CALL"
@@ -249,9 +252,10 @@ async function makeCall(req, res) {
 
     // ─────────────────────────────────────────────────────────────
     // STEP 6: Push notifications
+    // 🔒 FIX: Number-safe comparison so caller never ends up in receivers
     // ─────────────────────────────────────────────────────────────
     const receivers = participants.Records.filter(
-      (p) => p.user_id !== user_id
+      (p) => Number(p.user_id) !== Number(user_id)
     );
 
     const playerIds = receivers
@@ -284,12 +288,24 @@ async function makeCall(req, res) {
 
     // ─────────────────────────────────────────────────────────────
     // STEP 6.5: VOIP notifications for iOS users
+    // 🔒 FIX: skip caller explicitly (defensive, on top of the
+    //          already-fixed `receivers` filter above)
     // ─────────────────────────────────────────────────────────────
     for (const receiver of receivers) {
+      // 🔒 Extra safety net: never send VOIP to the caller themself
+      if (Number(receiver.user_id) === Number(user_id)) {
+        continue;
+      }
+
       // Use the User data already fetched in participants query
       const receiverUser = receiver.User;
-      
+
+      console.log("============receiverUserreceiverUserreceiverUserreceiverUser========", receiverUser.platforms)
+
       if (receiverUser && receiverUser.voip_token && receiverUser.platforms?.includes("ios")) {
+
+        console.log(" =========================sendVoipNotification========================")
+
         try {
           await sendVoipNotification({
             deviceToken: receiverUser.voip_token,
@@ -345,7 +361,8 @@ async function makeCall(req, res) {
         continue;
       }
 
-      if (participant.user_id !== user_id) {
+      // 🔒 FIX: Number-safe comparison
+      if (Number(participant.user_id) !== Number(user_id)) {
         // ✅ Mark as delivered for receivers
         await createMessageSeen({
           message_seen_status: "delivered",
